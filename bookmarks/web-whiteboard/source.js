@@ -332,8 +332,10 @@
 
   function applyInverse(r) {
     if (r.type === 'stroke-add') removeStroke(r.stroke.id);
-    else if (r.type === 'stroke-erase') state.strokes.splice(r.index, 0, r.stroke);
-    else if (r.type === 'clear-all') state.strokes = r.snapshot.slice();
+    else if (r.type === 'stroke-erase') {
+      // 反向插回：每筆的 index 是當時刪除前的位置
+      for (var i = r.items.length - 1; i >= 0; i--) state.strokes.splice(r.items[i].index, 0, r.items[i].stroke);
+    } else if (r.type === 'clear-all') state.strokes = r.snapshot.slice();
     else if (r.type === 'note-add') removeNote(r.note.id);
     else if (r.type === 'note-delete') {
       state.notes.splice(r.index, 0, r.note);
@@ -344,8 +346,9 @@
 
   function applyForward(r) {
     if (r.type === 'stroke-add') state.strokes.push(r.stroke);
-    else if (r.type === 'stroke-erase') removeStroke(r.stroke.id);
-    else if (r.type === 'clear-all') state.strokes = [];
+    else if (r.type === 'stroke-erase') {
+      for (var i = 0; i < r.items.length; i++) removeStroke(r.items[i].stroke.id);
+    } else if (r.type === 'clear-all') state.strokes = [];
     else if (r.type === 'note-add') {
       state.notes.push(r.note);
       mountNote(r.note);
@@ -540,13 +543,17 @@
   /**
    * 刪除橡皮擦路徑 a→b 碰到的筆畫。
    * 點擊（a === b）只刪最上層那條；拖曳時刪除沿途碰到的所有筆畫。
+   * 同一次按下到放開擦掉的筆畫合併成一筆 undo 紀錄。
    */
   function eraseAlong(a, b) {
     var hit = false;
     for (var i = state.strokes.length - 1; i >= 0; i--) {
       if (hitStroke(state.strokes[i], a, b)) {
-        var s = state.strokes.splice(i, 1)[0];
-        pushUndo({ type: 'stroke-erase', stroke: s, index: i });
+        if (!session.record) {
+          session.record = { type: 'stroke-erase', items: [] };
+          pushUndo(session.record);
+        }
+        session.record.items.push({ stroke: state.strokes.splice(i, 1)[0], index: i });
         hit = true;
         if (a === b) break;
       }

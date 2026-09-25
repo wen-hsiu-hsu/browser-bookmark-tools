@@ -562,7 +562,7 @@ test('視窗 resize 時重新量畫布尺寸', async function () {
   assert.strictEqual(t.canvas().style.width, '500px');
 });
 
-test('一次擦掉多條後逐步復原，順序正確', async function () {
+test('一次拖曳擦掉多條，一次復原全部回來且順序正確', async function () {
   var t = await open();
   t.click('筆');
   t.drag([[0, 0], [0, 100]]);
@@ -572,13 +572,29 @@ test('一次擦掉多條後逐步復原，順序正確', async function () {
   t.drag([[-10, 50], [110, 50]]);
   assert.deepStrictEqual(await t.visible(), []);
   t.click('復原');
-  t.click('復原');
-  t.click('復原');
   assert.deepStrictEqual(await t.visible(), [
     [[0, 0], [0, 100]],
     [[50, 0], [50, 100]],
     [[100, 0], [100, 100]]
   ]);
+  t.click('重做');
+  assert.deepStrictEqual(await t.visible(), []);
+  t.click('復原');
+  t.click('復原');
+  assert.strictEqual(t.toast(), '已復原', '第二次復原的是最後一筆畫筆，不是擦除');
+  assert.strictEqual((await t.visible()).length, 2);
+});
+
+test('分開兩次擦除是兩筆復原紀錄', async function () {
+  var t = await open();
+  t.click('筆');
+  t.drag([[0, 0], [0, 100]]);
+  t.drag([[50, 0], [50, 100]]);
+  t.click('橡皮擦');
+  t.drag([[0, 50]]);
+  t.drag([[50, 50]]);
+  t.click('復原');
+  assert.deepStrictEqual(await t.visible(), [[[50, 0], [50, 100]]]);
 });
 
 test('畫到一半關閉白板，不留殘筆也不再回應滑鼠', async function () {
