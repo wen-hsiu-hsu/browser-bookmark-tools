@@ -472,6 +472,14 @@ test('工具列：最小化與展開', async function () {
   assert.strictEqual(bubble.style.display, 'none');
 });
 
+test('畫圖模式下最小化會切回互動模式', async function () {
+  var t = await open();
+  t.click('筆');
+  t.click('最小化');
+  assert.strictEqual(t.canvas().style.pointerEvents, 'none');
+  assert.strictEqual(t.toast(), '已切換至互動模式');
+});
+
 test('工具列按鈕使用 SVG 圖示與 title 提示；樣式加 !important', async function () {
   var t = await open();
   var b = t.btn('橡皮擦');

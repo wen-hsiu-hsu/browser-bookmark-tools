@@ -838,6 +838,8 @@
 
   function setMinimized(min) {
     state.minimized = min;
+    // 縮小工具列通常是想回去操作網頁；圓鈕也看不出目前模式，所以切回互動模式
+    if (min) setMode('interact');
     setStyle(bar, 'display', min ? 'none' : 'flex');
     setStyle(bubble, 'display', min ? 'flex' : 'none');
   }
