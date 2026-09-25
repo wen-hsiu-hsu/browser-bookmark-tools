@@ -6,7 +6,7 @@
 
 | 書籤 | 目前版本 | 說明 |
 |---|---|---|
-| （尚無，陸續移轉中） | | |
+| [LCS Podcast 專注模式](bookmarks/lcs-podcast-focus/) | v1.0.0 | LearnCraft Spanish podcast 頁：移除導覽列、播放器貼齊頂端 |
 
 ## 安裝書籤
 
