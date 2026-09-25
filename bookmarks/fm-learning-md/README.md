@@ -1,6 +1,6 @@
 # FM 學習卡轉 Markdown
 
-> 建議書籤名稱：`FM 學習卡轉 Markdown v1.0.0`
+> 建議書籤名稱：`FM 學習卡轉 Markdown v1.1.0`
 
 ## 功能
 
@@ -27,8 +27,25 @@
   - 新版屬性：`data-state="correct"` 和 `data-state="missed"`。
   - 使用者選錯的選項（`is-incorrect`、`data-state="incorrect"`）不會被當成正解。
 - 有多個正解時，改用清單（`- A`、`- C`）；如果正解本身有多行（例如含 code block），改成以空行分隔。
-- 題目含 code block 時，code block 會移到 `</summary>` 之後、答案之前，前後各空一行。`<summary>` 只能放單行文字，而且 `</summary>` 後面要先空一行，裡面的 Markdown 才會被渲染。
-- 題目只有程式碼、沒有文字時，summary 會顯示 `（程式碼題）`。
+
+### Quiz 輸出（題目含 code block 時）
+
+整段改用 HTML 輸出，讓題目文字和程式碼都放在 `<summary>` 裡：收合時就看得到完整題目，點開後才顯示答案。
+
+```html
+<details v-pre>
+<summary>題目文字，行內 code 轉成 <code>…</code>
+<pre><code>程式碼（&lt; &amp; &gt; 已跳脫）</code></pre></summary>
+答案（多個正解時用 <ul><li>）
+</details>
+```
+
+- 題目文字和程式碼照頁面上的原始順序排列。
+- 加上 `v-pre` 屬性，VitePress（Vue）就不會解析程式碼裡的 `{{ }}`；Obsidian 會忽略這個屬性。
+- **輸出中不能有任何空行**：整段 `<details>` 在 Markdown 裡屬於 HTML 區塊，遇到空行就會結束。所以：
+  - 程式碼裡的空行，會換成只含 `&#32;`（空白）的一行，顯示出來仍然是空行。
+  - 行內 code 和一般文字裡的換行都會折疊成空格。
+- 已在 Obsidian 和 VitePress 實測過，顯示正常。
 
 ### Flashcard 輸出
 
@@ -82,10 +99,11 @@
 ## 安裝
 
 1. 複製同資料夾 `bookmarklet.txt` 的整行內容（以 `javascript:` 開頭）。
-2. 瀏覽器新增書籤，名稱填 `FM 學習卡轉 Markdown v1.0.0`，網址貼上剛剛複製的內容。
+2. 瀏覽器新增書籤，名稱填 `FM 學習卡轉 Markdown v1.1.0`，網址貼上剛剛複製的內容。
 
 ## 版本紀錄
 
 | 版本 | 日期 | 變更 |
 |---|---|---|
+| v1.1.0 | 2026-09-25 | Quiz 題目含 code block 時，整段改用 HTML（`<details v-pre>`）輸出，題目和程式碼都放在 `<summary>` 裡，收合時也看得到；程式碼空行換成 `&#32;`，避免 HTML 區塊中斷。 |
 | v1.0.0 | 2026-09-25 | 從 Claude Projects 移轉而來，取代舊版（沒有版本號）。改動如下：<br>• 修正 Flashcard 題目與 code block 之間多出的空行<br>• 多個正解改為全部列出<br>• Quiz 題目的 code block 移到 `</summary>` 之後<br>• 相鄰段落沒有空白時不再黏在一起<br>• 行內 code 含反引號時改用雙反引號<br>• Quiz 缺少題目時提示 `找不到題目內容`<br>• 改寫成 ES5，toast 和複製改用新版共用元件 |

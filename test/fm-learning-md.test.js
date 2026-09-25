@@ -117,7 +117,7 @@ test('Quiz 多個正解 → 清單', async function () {
   assert.strictEqual(r.copied, '<details>\n<summary>Q?</summary>\n- A\n- C\n</details>');
 });
 
-test('Quiz 題目含 code block → 移到 </summary> 後，前後空行', async function () {
+test('Quiz 題目含 code block → 整段 HTML：題目與程式碼都在 <summary>', async function () {
   var r = await run(
     '<div class="LM-Quiz"><div class="LM-Quiz-question"><div><p>What does <code>f</code> log?</p>\n' +
       '<pre><code>console.log(1);\n</code></pre>\n<p>Pick one.</p></div></div>' +
@@ -125,8 +125,61 @@ test('Quiz 題目含 code block → 移到 </summary> 後，前後空行', async
   );
   assert.strictEqual(
     r.copied,
-    '<details>\n<summary>What does `f` log? Pick one.</summary>\n\n' +
-      '```javascript\nconsole.log(1);\n```\n\n1\n</details>'
+    '<details v-pre>\n<summary>What does <code>f</code> log?\n' +
+      '<pre><code>console.log(1);</code></pre>\nPick one.</summary>\n1\n</details>'
+  );
+});
+
+test('HTML 模式：程式碼跳脫、保留縮排，空行改成 &#32;，不產生任何空行', async function () {
+  var r = await run(
+    '<div class="LM-Quiz"><div class="LM-Quiz-question"><p>Q</p>' +
+      '<pre><code>if (a &lt; b &amp;&amp; c &gt; d) {\n\n    run(`{{ x }}`);\n  \n}\n</code></pre></div>' +
+      '<button class="LM-Quiz-option is-correct"><div class="LM-Quiz-option-text">x &lt; y</div></button></div>'
+  );
+  assert.strictEqual(
+    r.copied,
+    '<details v-pre>\n<summary>Q\n<pre><code>if (a &lt; b &amp;&amp; c &gt; d) {\n&#32;\n    run(`{{ x }}`);\n&#32;\n}</code></pre></summary>\n' +
+      'x &lt; y\n</details>'
+  );
+  assert.ok(!/\n\s*\n/.test(r.copied));
+});
+
+test('HTML 模式：連續的 <div><pre>、行內 code 含換行、相鄰區塊元素都不會產生空行或黏字', async function () {
+  var r = await run(
+    '<div class="LM-Quiz"><div class="LM-Quiz-question"><p>First.</p><p>See <code>a\n\n  b</code></p>' +
+      '<div><pre><code>x()</code></pre></div>\n<div><pre><code>y()</code></pre></div>' +
+      '<pre><code>z()</code></pre><div><pre><code>w()</code></pre></div>Line1<br>Line2<ul><li>one</li><li>two</li></ul></div>' +
+      '<button class="LM-Quiz-option is-correct"><div class="LM-Quiz-option-text">ok</div></button></div>'
+  );
+  assert.strictEqual(
+    r.copied,
+    '<details v-pre>\n<summary>First. See <code>a b</code>\n' +
+      '<pre><code>x()</code></pre>\n<pre><code>y()</code></pre>\n<pre><code>z()</code></pre>\n<pre><code>w()</code></pre>\n' +
+      'Line1 Line2 one two</summary>\nok\n</details>'
+  );
+  assert.ok(!/\n\s*\n/.test(r.copied));
+});
+
+test('HTML 模式：多個正解 → <ul>，行內 code → <code>', async function () {
+  var r = await run(
+    '<div class="LM-Quiz"><div class="LM-Quiz-question"><pre><code>f()</code></pre></div>' +
+      '<button class="LM-Quiz-option is-correct"><div class="LM-Quiz-option-text">A <code>g</code></div></button>' +
+      '<button class="LM-Quiz-option is-missed"><div class="LM-Quiz-option-text">B</div></button></div>'
+  );
+  assert.strictEqual(
+    r.copied,
+    '<details v-pre>\n<summary><pre><code>f()</code></pre></summary>\n<ul><li>A <code>g</code></li><li>B</li></ul>\n</details>'
+  );
+});
+
+test('HTML 模式：答案含 code block 也轉成 <pre>', async function () {
+  var r = await run(
+    '<div class="LM-Quiz"><div class="LM-Quiz-question"><p>Q</p><pre><code>a()</code></pre></div>' +
+      '<button class="LM-Quiz-option is-correct"><div class="LM-Quiz-option-text">see<pre><code>b()</code></pre>ok</div></button></div>'
+  );
+  assert.strictEqual(
+    r.copied,
+    '<details v-pre>\n<summary>Q\n<pre><code>a()</code></pre></summary>\nsee\n<pre><code>b()</code></pre>\nok\n</details>'
   );
 });
 
@@ -202,14 +255,6 @@ test('Quiz 多個正解且含多行 → 以空行分隔，不用清單', async f
       '<button class="LM-Quiz-option is-missed"><div class="LM-Quiz-option-text">b</div></button></div>'
   );
   assert.strictEqual(r.copied, '<details>\n<summary>Q?</summary>\n\n```javascript\na()\n```\n\nb\n</details>');
-});
-
-test('Quiz 題目只有程式碼 → 以（程式碼題）當 summary', async function () {
-  var r = await run(
-    '<div class="LM-Quiz"><div class="LM-Quiz-question"><pre><code>f()</code></pre></div>' +
-      '<button class="LM-Quiz-option is-correct"><div class="LM-Quiz-option-text">1</div></button></div>'
-  );
-  assert.strictEqual(r.copied, '<details>\n<summary>（程式碼題）</summary>\n\n```javascript\nf()\n```\n\n1\n</details>');
 });
 
 test('Flashcard 缺正面 → 找不到 flashcard 內容', async function () {

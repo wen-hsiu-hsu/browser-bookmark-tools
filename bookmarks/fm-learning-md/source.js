@@ -1,6 +1,6 @@
 /**
  * @name    FM 學習卡轉 Markdown
- * @version 1.0.0
+ * @version 1.1.0
  * @desc    Frontend Masters Learning Mode：把目前的 Quiz / Flashcard 轉成 Markdown 並複製
  *
  * 建置：npm run build -- fm-learning-md
@@ -12,10 +12,58 @@
   var d = document;
   var BLOCK = /^(P|DIV|LI|UL|OL|BR|H[1-6]|BLOCKQUOTE)$/;
 
-  function fence(pre) {
+  function codeOf(pre) {
     var codeEl = pre.querySelector('code');
-    var code = (codeEl || pre).textContent.replace(/\n+$/, '');
-    return '```javascript\n' + code + '\n```';
+    return (codeEl || pre).textContent.replace(/\n+$/, '');
+  }
+
+  function fence(pre) {
+    return '```javascript\n' + codeOf(pre) + '\n```';
+  }
+
+  function esc(t) {
+    return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  /**
+   * 元素 → HTML（用於題目含 code block 的 Quiz）：文字跳脫並折疊空白，
+   * 行內 <code> 保留，<pre> 輸出 <pre><code>。
+   * 整段 <details> 在 Markdown 中是 HTML 區塊，遇到空行就會結束，
+   * 所以程式碼中的空行改成只含 &#32;（空白）的一行。
+   */
+  function toHtml(el) {
+    var out = '';
+    var afterPre = false;
+    for (var n = el.firstChild; n; n = n.nextSibling) {
+      var part = '';
+      if (n.nodeType === 3) {
+        part = esc(n.nodeValue).replace(/\s+/g, ' ');
+      } else if (n.nodeType === 1) {
+        if (n.tagName === 'PRE') {
+          var lines = esc(codeOf(n)).split('\n');
+          for (var i = 0; i < lines.length; i++) if (!/\S/.test(lines[i])) lines[i] = '&#32;';
+          part = '<pre><code>' + lines.join('\n') + '</code></pre>';
+        } else if (n.tagName === 'CODE') {
+          part = '<code>' + esc(n.textContent).replace(/\s+/g, ' ') + '</code>';
+        } else {
+          part = toHtml(n);
+          if (BLOCK.test(n.tagName)) part = part ? ' ' + part + ' ' : ' '; // 區塊元素之間以空格分隔，避免文字黏在一起
+        }
+      }
+      if (!part) continue;
+      if (afterPre || /^ *<pre>/.test(part)) {
+        // <pre> 前後各剛好一個換行：去掉相鄰空白，且絕不產生空行
+        out = out.replace(/ +$/, '');
+        part = part.replace(/^ +/, '');
+        if (!part) continue; // </pre> 後的純空白：略過，仍視為緊接在 </pre> 之後
+        if (out && !/\n$/.test(out)) out += '\n';
+      } else if (/ $/.test(out) && /^ /.test(part)) {
+        part = part.slice(1);
+      }
+      out += part;
+      afterPre = /<\/pre> *$/.test(part);
+    }
+    return out.replace(/^ +| +$/g, '');
   }
 
   /** 行內 code：內容含反引號時改用雙反引號包住。 */
@@ -32,7 +80,6 @@
    * 元素 → Markdown（結果累積在 st.out）：
    * <pre> 轉 fenced code block（語言固定 javascript），前後剛好一個換行；
    * 行內 <code> 轉反引號；區塊元素之間以單一換行分隔；其他標籤只取文字。
-   * st.codes 為陣列時，code block 改收集到陣列中，不放在原位。
    */
   function walk(el, st) {
     for (var n = el.firstChild; n; n = n.nextSibling) {
@@ -42,14 +89,9 @@
         else st.out += t;
       } else if (n.nodeType === 1) {
         if (n.tagName === 'PRE') {
-          if (st.codes) {
-            st.codes.push(fence(n));
-            st.out += ' ';
-          } else {
-            st.out = st.out.replace(/\s+$/, '');
-            if (st.out) st.out += /```$/.test(st.out) ? '\n\n' : '\n'; // 連續 code block 之間空一行
-            st.out += fence(n) + '\n';
-          }
+          st.out = st.out.replace(/\s+$/, '');
+          if (st.out) st.out += /```$/.test(st.out) ? '\n\n' : '\n'; // 連續 code block 之間空一行
+          st.out += fence(n) + '\n';
         } else if (n.tagName === 'CODE') {
           st.out += inline(n.textContent);
         } else {
@@ -60,8 +102,8 @@
     }
   }
 
-  function toMd(el, codes) {
-    var st = { out: '', codes: codes };
+  function toMd(el) {
+    var st = { out: '' };
     walk(el, st);
     return st.out.replace(/^\s+|\s+$/g, '');
   }
@@ -82,20 +124,31 @@
       '.LM-Quiz-option.is-correct, .LM-Quiz-option.is-missed,' +
         '.LM-Quiz-option[data-state="correct"], .LM-Quiz-option[data-state="missed"]'
     );
+    if (!qEl) {
+      toast('找不到題目內容', 'error');
+      return;
+    }
+    // 題目含 code block：整段改用 HTML，讓題目與程式碼一起顯示在 <summary>（收合時可見）
+    var html = !!qEl.querySelector('pre');
     var answers = [];
     for (var i = 0; i < opts.length; i++) {
       var tEl = opts[i].querySelector('.LM-Quiz-option-text');
-      var a = tEl && toMd(tEl);
+      var a = tEl && (html ? toHtml(tEl) : toMd(tEl));
       if (a) answers.push(a);
     }
     if (!answers.length) {
       toast('尚未送出答案', 'error');
       return;
     }
-    var codes = [];
-    // <summary> 只能放單行文字：code block 移到 </summary> 之後
-    var q = qEl ? toMd(qEl, codes).replace(/\s+/g, ' ') : '';
-    if (!q && codes.length) q = '（程式碼題）';
+
+    if (html) {
+      var ansHtml = answers.length > 1 ? '<ul><li>' + answers.join('</li><li>') + '</li></ul>' : answers[0];
+      // v-pre：VitePress（Vue）不解析內容中的 {{ }}；Obsidian 會忽略此屬性
+      done('<details v-pre>\n<summary>' + toHtml(qEl) + '</summary>\n' + ansHtml + '\n</details>');
+      return;
+    }
+
+    var q = toMd(qEl).replace(/\s+/g, ' ');
     if (!q) {
       toast('找不到題目內容', 'error');
       return;
@@ -104,9 +157,8 @@
     // 多個正解用清單；答案本身有多行（例如含 code block）時改以空行分隔，避免破壞清單
     var ans =
       answers.length < 2 ? answers[0] : multiline ? answers.join('\n\n') : '- ' + answers.join('\n- ');
-    // 含 code block 時 </summary> 後要空一行，Markdown 才會被渲染
-    var body = codes.length ? '\n' + codes.join('\n\n') + '\n\n' + ans : multiline ? '\n' + ans : ans;
-    done('<details>\n<summary>' + q + '</summary>\n' + body + '\n</details>');
+    // 答案含 code block 時 </summary> 後要空一行，Markdown 才會被渲染
+    done('<details>\n<summary>' + q + '</summary>\n' + (multiline ? '\n' : '') + ans + '\n</details>');
   } else if (card) {
     var front = card.querySelector('.LM-Flashcard-front .LM-Flashcard-text');
     var back = card.querySelector('.LM-Flashcard-back .LM-Flashcard-text');
