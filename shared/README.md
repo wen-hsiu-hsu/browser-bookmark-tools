@@ -89,3 +89,32 @@ var timer = setInterval(function () {
 3. `cb` 只會被呼叫一次，參數表示是否成功。
 
 Clipboard API 常見的失敗原因**不是 CSP**，而是以下幾種情況：非安全環境（http）、頁面沒有焦點、iframe 被 Permissions-Policy 限制。`execCommand('copy')` 已被標為 deprecated，但各主流瀏覽器目前仍支援。
+
+---
+
+## lm-md
+
+Frontend Masters Learning Mode 專用：`toMd(el)` 把元素轉成 Markdown。
+
+- `<pre>` 轉成 ```` ```javascript ```` fenced code block，前後剛好各一個換行；連續的 code block 之間空一行。
+- 行內 `<code>` 轉成反引號；內容本身含反引號時，改用雙反引號包住。
+- 區塊元素（`p`、`div`、`li`、`br`、`h1`–`h6` 等）之間以一個換行分隔；其他標籤只取文字。
+- 另外提供 `codeOf(pre)`、`fence(pre)`、`BLOCK`。
+
+使用者：`fm-learning-md`、`fm-flashcard-batch`。修改轉換規則時，兩個書籤都要升版。
+
+---
+
+## copy-prompt
+
+`copyOrPrompt(text: string, okMsg: string, label: string): void`，另外提供 `removeCopyPrompt()`。會自動 include `toast` 和 `clipboard`。
+
+1. 先移除上一次留下、沒被點的按鈕。
+2. 用 `copyText()` 直接複製；成功就顯示 `toast(okMsg)`。
+3. 失敗時移除目前的 toast，改在同一個位置顯示可點擊的按鈕 `#__bmt_copy_btn__`：
+   - 按鈕文字是 `label`，樣式跟 info toast 相同（藍色 `#2563eb`），但可以點。
+4. 點擊按鈕時再複製一次，這次點擊就是新的使用者操作：
+   - 成功：移除按鈕，並顯示 `okMsg`。
+   - 失敗：保留按鈕讓使用者再試，並顯示 `複製失敗`。
+
+適用情境：批次作業跑太久，超過瀏覽器允許寫入剪貼簿的時限（使用者點擊後 Firefox 約 5 秒，Safari 更嚴格）。
