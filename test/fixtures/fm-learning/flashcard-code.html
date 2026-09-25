@@ -1,0 +1,34 @@
+<div class="LM-Flashcard">
+        <button type="button" class="LM-Flashcard-card" data-revealed="false">
+          <div class="LM-Flashcard-front">
+            <div class="LM-Flashcard-content">
+              <div class="LM-Flashcard-content-wrapper">
+                <div class="LM-Flashcard-text"><div><p>In the following code, what happens to the counter variable when newFunc is called twice?</p>
+<pre tabindex="-1"><code>function outer() {
+  let counter = 0;
+  function addOne() {
+    counter++;
+  }
+  return addOne;
+}
+const newFunc = outer();
+newFunc();
+newFunc();
+</code></pre>
+</div></div>
+              </div>
+            </div>
+            <div class="LM-Flashcard-footer"><div class="LM-Flashcard-reveal-btn"><span>Click to reveal answer</span></div></div>
+          </div>
+
+          <div class="LM-Flashcard-back">
+            <div class="LM-Flashcard-content">
+              <div class="LM-Flashcard-content-wrapper">
+                <div class="LM-Flashcard-text"><div><p>The counter variable is stored in the closure attached to newFunc. On the first call, counter is incremented from 0 to 1. On the second call, counter is incremented from 1 to 2. The counter persists between calls because it's stored in the backpack/closure.</p>
+</div></div>
+              </div>
+            </div>
+            <div class="LM-Flashcard-footer"><div class="LM-Flashcard-reveal-btn"><span>Click to show question</span></div></div>
+          </div>
+        </button>
+      </div>

@@ -207,6 +207,10 @@ test('build：結果值永遠是 undefined，不會取代頁面', async function
   }
 });
 
+test('build：輸出含控制字元時建置失敗', async function () {
+  await assert.rejects(build.toBookmarklet('(function(){ document.title = "a\\u0001b"; })();'), /控制字元/);
+});
+
 test('build：readTag', function () {
   assert.strictEqual(build.readTag(read('bookmarks/_template/source.js'), 'version'), '1.0.0');
 });

@@ -37,6 +37,7 @@ test/                 node:test + jsdom
 - 注入頁面的 id／class／屬性一律使用 `__bmt_` 前綴。
 - **toast 回饋**：完成（成功、失敗、錯誤）時都要顯示 toast；有等待或讀秒時，用 `toast(msg, 'info', 0)` 持續更新文字。訊息使用繁體中文。
 - **複製**：一律使用共用的 `copyText()`，它會先試 clipboard API，失敗再 fallback 到 `execCommand('copy')`。
+- 字串中不要放控制字元（例如 `'\u0001'`）：Terser 會原樣輸出，複製貼上到書籤時可能被吃掉。建置時會檢查，遇到就失敗。
 - 不要用 `innerHTML` 寫入內容，改用 `textContent`／`createElement`。啟用 Trusted Types 的網站（例如 Google 系列）會直接拋錯。
 - 網站 HTML 可能改版。懷疑壞掉時，先拿實際 HTML 驗證 selector。
 - canvas／overlay 的尺寸在開啟時量一次就好，避免 layout thrash。

@@ -57,6 +57,8 @@ async function toBookmarklet(src) {
   // Terser 可能拆掉 IIFE，使最後的運算式值變成字串（例如 a.textContent="x"）；
   // javascript: 網址的結果若是字串，瀏覽器會用它取代整個頁面，所以結尾強制 void 0
   code = result.code.replace(/;?$/, ';void 0');
+  // 控制字元（例如字串中的 \u0001）會被 Terser 原樣輸出，複製貼上到書籤時可能被吃掉
+  if (/[\x00-\x1f\x7f]/.test(code)) throw new Error('輸出含有控制字元，請改寫原始碼避免使用');
   // 瀏覽器執行 javascript: 網址前會先做百分比解碼，% 必須先跳脫
   return 'javascript:' + code.replace(/%/g, '%25');
 }
