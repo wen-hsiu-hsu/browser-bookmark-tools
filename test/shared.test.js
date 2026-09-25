@@ -1,0 +1,176 @@
+'use strict';
+
+var test = require('node:test');
+var assert = require('node:assert');
+var fs = require('fs');
+var path = require('path');
+var JSDOM = require('jsdom').JSDOM;
+var build = require('../scripts/build.js');
+
+var ROOT = path.join(__dirname, '..');
+function read(p) {
+  return fs.readFileSync(path.join(ROOT, p), 'utf8');
+}
+
+/** 建立 jsdom 視窗，並以可手動推進的假計時器取代 setTimeout。 */
+function makeWindow() {
+  var win = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only' }).window;
+  var now = 0;
+  var seq = 0;
+  var timers = {};
+  win.setTimeout = function (fn, ms) {
+    timers[++seq] = { fn: fn, at: now + ms };
+    return seq;
+  };
+  win.clearTimeout = function (id) {
+    delete timers[id];
+  };
+  win.tick = function (ms) {
+    var end = now + ms;
+    for (;;) {
+      var next = null;
+      Object.keys(timers).forEach(function (id) {
+        if (timers[id].at <= end && (!next || timers[id].at < timers[next].at)) next = id;
+      });
+      if (!next) break;
+      var t = timers[next];
+      delete timers[next];
+      now = t.at;
+      t.fn();
+    }
+    now = end;
+  };
+  win.eval(read('shared/toast.js') + read('shared/clipboard.js'));
+  return win;
+}
+
+function el(win) {
+  return win.document.getElementById('__bmt_toast__');
+}
+
+test('toast：預設 success，2500ms 後淡出、300ms 後移除', function () {
+  var win = makeWindow();
+  win.toast('已複製');
+  assert.strictEqual(el(win).textContent, '已複製');
+  assert.strictEqual(el(win).style.background, 'rgb(22, 163, 74)');
+  assert.strictEqual(el(win).style.opacity, '1');
+  win.tick(2499);
+  assert.strictEqual(el(win).style.opacity, '1');
+  win.tick(1);
+  assert.strictEqual(el(win).style.opacity, '0');
+  win.tick(299);
+  assert.ok(el(win));
+  win.tick(1);
+  assert.strictEqual(el(win), null);
+});
+
+test('toast：error / info 顏色', function () {
+  var win = makeWindow();
+  win.toast('x', 'error');
+  assert.strictEqual(el(win).style.background, 'rgb(220, 38, 38)');
+  win.toast('x', 'info');
+  assert.strictEqual(el(win).style.background, 'rgb(37, 99, 235)');
+});
+
+test('toast：重複呼叫只保留一個，舊計時器不會刪掉新 toast', function () {
+  var win = makeWindow();
+  win.toast('a');
+  win.tick(2600); // 第一個正在淡出
+  win.toast('b');
+  assert.strictEqual(win.document.querySelectorAll('#__bmt_toast__').length, 1);
+  assert.strictEqual(el(win).style.opacity, '1');
+  win.tick(500); // 超過第一個的移除時間點
+  assert.strictEqual(el(win).textContent, 'b');
+  win.tick(2300);
+  assert.strictEqual(el(win), null);
+});
+
+test('toast：duration 0 不自動消失，可更新文字後再以 success 結束', function () {
+  var win = makeWindow();
+  win.toast('3 秒後執行', 'info', 0);
+  win.tick(10000);
+  assert.strictEqual(el(win).textContent, '3 秒後執行');
+  win.toast('完成');
+  win.tick(2800);
+  assert.strictEqual(el(win), null);
+});
+
+test('toast：清除舊版 __lm_md_toast__', function () {
+  var win = makeWindow();
+  var old = win.document.createElement('div');
+  old.id = '__lm_md_toast__';
+  win.document.body.appendChild(old);
+  win.toast('x');
+  assert.strictEqual(win.document.getElementById('__lm_md_toast__'), null);
+});
+
+test('toast：以 textContent 寫入，不解析 HTML', function () {
+  var win = makeWindow();
+  win.toast('<b>x</b>');
+  assert.strictEqual(el(win).children.length, 0);
+});
+
+test('copyText：clipboard API 成功', async function () {
+  var win = makeWindow();
+  var got;
+  Object.defineProperty(win.navigator, 'clipboard', {
+    value: { writeText: function (t) { got = t; return Promise.resolve(); } }
+  });
+  var ok = await new Promise(function (r) { win.copyText('hi', r); });
+  assert.strictEqual(ok, true);
+  assert.strictEqual(got, 'hi');
+});
+
+test('copyText：clipboard API 被拒時 fallback 到 execCommand', async function () {
+  var win = makeWindow();
+  var copied;
+  Object.defineProperty(win.navigator, 'clipboard', {
+    value: { writeText: function () { return Promise.reject(new Error('blocked')); } }
+  });
+  win.document.execCommand = function (cmd) {
+    copied = win.document.querySelector('textarea').value;
+    return cmd === 'copy';
+  };
+  var ok = await new Promise(function (r) { win.copyText('hi', r); });
+  assert.strictEqual(ok, true);
+  assert.strictEqual(copied, 'hi');
+  assert.strictEqual(win.document.querySelector('textarea'), null);
+});
+
+test('copyText：沒有 clipboard API 且 execCommand 失敗 → false', async function () {
+  var win = makeWindow();
+  win.document.execCommand = function () { throw new Error('nope'); };
+  var ok = await new Promise(function (r) { win.copyText('hi', r); });
+  assert.strictEqual(ok, false);
+});
+
+test('build：expandIncludes 展開且不重複', function () {
+  var out = build.expandIncludes('/* @include toast */\n/* @include toast */');
+  assert.strictEqual(out.split('function toast(').length, 2);
+  assert.throws(function () { build.expandIncludes('/* @include nope */'); }, /nope/);
+});
+
+test('build：readTag', function () {
+  assert.strictEqual(build.readTag(read('bookmarks/_template/source.js'), 'version'), '1.0.0');
+});
+
+test('build：產生的書籤是單行、% 已跳脫，且可在頁面上執行', async function () {
+  var src = '(function(){ /* @include toast */ toast("100%", "info"); })();';
+  var url = await build.toBookmarklet(src);
+  assert.ok(url.indexOf('javascript:') === 0);
+  assert.ok(url.indexOf('\n') < 0);
+  assert.ok(url.indexOf('100%25') > 0);
+  var win = makeWindow();
+  win.eval(decodeURIComponent(url.slice('javascript:'.length)));
+  assert.strictEqual(el(win).textContent, '100%');
+});
+
+test('build：範本可建置並執行', async function () {
+  var url = await build.toBookmarklet(read('bookmarks/_template/source.js'));
+  var win = makeWindow();
+  win.document.title = 'T';
+  win.document.execCommand = function () { return true; };
+  win.eval(decodeURIComponent(url.slice('javascript:'.length)));
+  await new Promise(function (r) { setImmediate(r); });
+  assert.strictEqual(el(win).textContent, '已複製');
+});
