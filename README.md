@@ -9,6 +9,7 @@
 | [FM 學習卡批次複製](bookmarks/fm-flashcard-batch/) | v1.0.0 | Frontend Masters Learning Mode：從第一張開始逐張擷取 Flashcard，合併成 Markdown 後一次複製 |
 | [FM 學習卡轉 Markdown](bookmarks/fm-learning-md/) | v1.1.0 | Frontend Masters Learning Mode：把 Quiz／Flashcard 轉成 Markdown 並複製 |
 | [FM 逐字稿複製](bookmarks/fm-transcript-copy/) | v1.1.0 | Frontend Masters 課程頁：把逐字稿整理成純文字並複製（面板沒開時會自動打開） |
+| [反應圖](bookmarks/reaction-image/) | v1.0.0 | 開會／分享螢幕時在右下角顯示自訂圖片，Alt+Shift+1~9 切換 9 張 |
 | [LCS Podcast 專注模式](bookmarks/lcs-podcast-focus/) | v1.0.0 | LearnCraft Spanish podcast 頁：移除導覽列、播放器貼齊頂端 |
 | [網頁白板](bookmarks/web-whiteboard/) | v1.0.0 | 任何網頁：疊一層透明白板，手繪筆畫與便利貼，關閉即消失 |
 

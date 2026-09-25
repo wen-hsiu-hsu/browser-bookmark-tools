@@ -50,7 +50,7 @@ async function setup(opts) {
     mods = mods || { altKey: true, shiftKey: true };
     var e = new win.KeyboardEvent('keydown', {
       code: 'Digit' + n, altKey: !!mods.altKey, shiftKey: !!mods.shiftKey, ctrlKey: !!mods.ctrlKey,
-      bubbles: true, cancelable: true
+      metaKey: !!mods.metaKey, repeat: !!mods.repeat, bubbles: true, cancelable: true
     });
     (mods.target || p.d.body).dispatchEvent(e);
     return e;
@@ -116,6 +116,7 @@ test('沒按齊修飾鍵（只有 Alt、或多按 Ctrl）→ 不觸發', async f
   var p = await setup({ storage: { urls: { 1: 'https://img/a.gif', 2: 'https://img/b.gif' }, last: 1 } });
   assert.strictEqual(p.key(2, { altKey: true }).defaultPrevented, false);
   assert.strictEqual(p.key(2, { altKey: true, shiftKey: true, ctrlKey: true }).defaultPrevented, false);
+  assert.strictEqual(p.key(2, { altKey: true, shiftKey: true, metaKey: true }).defaultPrevented, false);
   assert.strictEqual(p.box().getAttribute('data-slot'), '1');
 });
 
@@ -177,4 +178,65 @@ test('網站禁止 localStorage → 仍可顯示（只是不記住）', async fu
   var p = await setup({ noStorage: true, prompts: ['https://img/a.gif'] });
   p.loadImg();
   assert.strictEqual(p.box().style.opacity, '1');
+});
+
+test('切換到別張後，舊圖才載入失敗 → 不詢問、不影響目前這張', async function () {
+  var p = await setup({ storage: { urls: { 1: 'https://img/slow.gif', 2: 'https://img/b.gif' }, last: 1 } });
+  var oldImg = p.img();
+  p.key(2);
+  oldImg.dispatchEvent(new p.win.Event('error'));
+  assert.strictEqual(p.asked.length, 0);
+  assert.strictEqual(p.box().getAttribute('data-slot'), '2');
+});
+
+test('切換到別張後，舊圖才載入成功 → 不改動 last', async function () {
+  var p = await setup({ storage: { urls: { 1: 'https://img/a.gif', 2: 'https://img/b.gif' }, last: 1 } });
+  var oldImg = p.img();
+  p.key(2);
+  p.loadImg();
+  oldImg.dispatchEvent(new p.win.Event('load'));
+  assert.strictEqual(p.stored().last, 2);
+});
+
+test('關閉（淡出中）後舊圖才載入成功 → 不會重新出現', async function () {
+  var p = await setup({ storage: { urls: { 1: 'https://img/a.gif' }, last: 1 } });
+  var box = p.box();
+  var img = p.img();
+  box.click();
+  img.dispatchEvent(new p.win.Event('load'));
+  assert.strictEqual(box.style.opacity, '0');
+});
+
+test('長按自動連發（repeat）→ 忽略，不會來回開關', async function () {
+  var p = await setup({ storage: { urls: { 1: 'https://img/a.gif' }, last: 1 } });
+  p.key(1);
+  var e = p.key(1, { altKey: true, shiftKey: true, repeat: true });
+  assert.ok(e.defaultPrevented);
+  assert.strictEqual(p.box(), null);
+});
+
+test('標記被頁面移除、監聽器裝了兩次 → 一次按鍵仍只處理一次', async function () {
+  var p = await setup({ storage: { urls: { 1: 'https://img/a.gif', 2: 'https://img/b.gif' }, last: 1 } });
+  p.d.documentElement.removeAttribute('data-__bmt_reaction');
+  p.click();
+  assert.strictEqual(p.listeners, 2);
+  p.key(2);
+  assert.strictEqual(p.box().getAttribute('data-slot'), '2');
+});
+
+test('localStorage 內容損壞 → 當作沒有設定，並能正常存回', async function () {
+  var bad = ['"str"', '[1]', '{"urls":"abc"}', '{"urls":5}', '{"last":"x"}', '{"urls":{"1":42},"last":1}', 'not json'];
+  for (var i = 0; i < bad.length; i++) {
+    if (!CODE) CODE = decodeURIComponent((await build.toBookmarklet(SRC)).slice('javascript:'.length));
+    var win = new JSDOM('<!doctype html><body></body>', { url: 'https://example.com/', runScripts: 'outside-only' }).window;
+    win.localStorage.setItem('__bmt_reaction', bad[i]);
+    var asked = [];
+    win.prompt = function (m) { asked.push(m); return 'https://img/a.gif'; };
+    win.eval(CODE);
+    assert.ok(asked.length === 1 && asked[0].indexOf('第 1 張') >= 0, bad[i]);
+    win.document.querySelector('#__bmt_reaction__ img').dispatchEvent(new win.Event('load'));
+    var s = JSON.parse(win.localStorage.getItem('__bmt_reaction'));
+    assert.strictEqual(s.urls[1], 'https://img/a.gif', bad[i]);
+    assert.strictEqual(s.last, 1, bad[i]);
+  }
 });

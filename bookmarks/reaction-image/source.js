@@ -18,14 +18,25 @@
   var FLAG = 'data-__bmt_reaction'; // 已監聽快捷鍵的標記
 
   // ---- 儲存（網站禁止 localStorage 時照樣能顯示，只是不會記住） ----
+  function isObj(v) {
+    return !!v && typeof v === 'object' && !(v instanceof Array);
+  }
+
+  /** 讀取設定；內容損壞（非物件、欄位型別錯誤）時改用安全的預設值。 */
   function load() {
     var s;
     try {
       s = JSON.parse(localStorage.getItem(KEY));
     } catch (e) {}
-    s = s && typeof s === 'object' ? s : {};
-    s.urls = s.urls || {};
+    s = isObj(s) ? s : {};
+    if (!isObj(s.urls)) s.urls = {};
+    if (!/^[1-9]$/.test(String(s.last))) s.last = 1;
     return s;
+  }
+
+  function urlOf(slot) {
+    var u = load().urls[slot];
+    return typeof u === 'string' && u ? u : null;
   }
 
   function remember(slot, url) {
@@ -97,11 +108,14 @@
       var u = ask(slot);
       if (u) show(slot, u, false);
     };
+    // 已切換到別張或已關閉後，舊圖的 load / error 才到：一律忽略，避免改動目前狀態
     img.onload = function () {
+      if (box !== current()) return;
       remember(slot, url);
       box.style.opacity = '1';
     };
     img.onerror = function () {
+      if (box !== current()) return;
       if (box.parentNode) box.parentNode.removeChild(box);
       if (retried) {
         toast('此網站可能禁止載入外部圖片', 'error');
@@ -120,7 +134,7 @@
 
   /** 顯示第 slot 張；沒設定過就先詢問網址。 */
   function open(slot) {
-    var url = load().urls[slot] || ask(slot);
+    var url = urlOf(slot) || ask(slot);
     if (url) show(slot, url, false);
   }
 
@@ -134,7 +148,9 @@
         var m = /^Digit([1-9])$/.exec(e.code || '');
         if (!m || !e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return;
         e.preventDefault();
-        e.stopPropagation();
+        // stopImmediatePropagation：萬一標記被頁面移除、監聽器被裝了兩次，同一次按鍵也只處理一次
+        e.stopImmediatePropagation();
+        if (e.repeat) return; // 長按的自動連發會讓開關來回切換
         var slot = +m[1];
         var cur = current();
         if (cur && +cur.getAttribute('data-slot') === slot) close(); // 同一張再按一次 = 關閉
@@ -145,5 +161,5 @@
     toast('快捷鍵已啟用：Alt+Shift+1~9', 'info');
   }
 
-  open(load().last || 1);
+  open(+load().last);
 })();
