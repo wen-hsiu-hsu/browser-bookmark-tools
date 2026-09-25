@@ -64,6 +64,21 @@ test('toast：預設 success，2500ms 後淡出、300ms 後移除', function () 
   assert.strictEqual(el(win), null);
 });
 
+test('toast：新建時先以 opacity 0 插入再設為 1（淡入）', function () {
+  var win = makeWindow();
+  var body = win.document.body;
+  var append = body.appendChild;
+  var atInsert;
+  body.appendChild = function (n) {
+    var r = append.call(this, n);
+    atInsert = n.style.opacity;
+    return r;
+  };
+  win.toast('x');
+  assert.strictEqual(atInsert, '0');
+  assert.strictEqual(el(win).style.opacity, '1');
+});
+
 test('toast：error / info 顏色', function () {
   var win = makeWindow();
   win.toast('x', 'error');
@@ -113,12 +128,18 @@ test('toast：以 textContent 寫入，不解析 HTML', function () {
 test('copyText：clipboard API 成功', async function () {
   var win = makeWindow();
   var got;
+  var calls = 0;
   Object.defineProperty(win.navigator, 'clipboard', {
     value: { writeText: function (t) { got = t; return Promise.resolve(); } }
   });
-  var ok = await new Promise(function (r) { win.copyText('hi', r); });
+  win.document.execCommand = function () { throw new Error('不應呼叫 fallback'); };
+  var ok = await new Promise(function (r) {
+    win.copyText('hi', function (v) { calls++; r(v); });
+  });
+  await new Promise(function (r) { setImmediate(r); });
   assert.strictEqual(ok, true);
   assert.strictEqual(got, 'hi');
+  assert.strictEqual(calls, 1);
 });
 
 test('copyText：clipboard API 被拒時 fallback 到 execCommand', async function () {
@@ -137,6 +158,20 @@ test('copyText：clipboard API 被拒時 fallback 到 execCommand', async functi
   assert.strictEqual(win.document.querySelector('textarea'), null);
 });
 
+test('copyText：writeText 同步拋錯時 fallback，並還原焦點', async function () {
+  var win = makeWindow();
+  var input = win.document.createElement('input');
+  win.document.body.appendChild(input);
+  input.focus();
+  Object.defineProperty(win.navigator, 'clipboard', {
+    value: { writeText: function () { throw new Error('sync'); } }
+  });
+  win.document.execCommand = function () { return true; };
+  var ok = await new Promise(function (r) { win.copyText('hi', r); });
+  assert.strictEqual(ok, true);
+  assert.strictEqual(win.document.activeElement, input);
+});
+
 test('copyText：沒有 clipboard API 且 execCommand 失敗 → false', async function () {
   var win = makeWindow();
   win.document.execCommand = function () { throw new Error('nope'); };
@@ -145,9 +180,31 @@ test('copyText：沒有 clipboard API 且 execCommand 失敗 → false', async f
 });
 
 test('build：expandIncludes 展開且不重複', function () {
-  var out = build.expandIncludes('/* @include toast */\n/* @include toast */');
+  var out = build.expandIncludes('/* @include toast */\n  /* @include toast */');
   assert.strictEqual(out.split('function toast(').length, 2);
+  // 不在獨立一行的 include（註解、字串內）不展開
+  var inline = '// /* @include toast */\nvar s = "/* @include toast */";';
+  assert.strictEqual(build.expandIncludes(inline), inline);
   assert.throws(function () { build.expandIncludes('/* @include nope */'); }, /nope/);
+});
+
+test('build：非 ES5 語法會讓建置失敗', async function () {
+  await assert.rejects(build.toBookmarklet('(function(){ var f = () => 1; })();'), /ES5/);
+  await assert.rejects(build.toBookmarklet('(function(){ let a = 1; })();'), /ES5/);
+});
+
+test('build：結果值永遠是 undefined，不會取代頁面', async function () {
+  var srcs = [
+    '(function(){ document.title = "x"; })();',
+    '(function(){ var e = document.body; e.textContent = "done"; })();',
+    read('bookmarks/_template/source.js')
+  ];
+  for (var i = 0; i < srcs.length; i++) {
+    var url = await build.toBookmarklet(srcs[i]);
+    var win = makeWindow();
+    win.document.execCommand = function () { return true; };
+    assert.strictEqual(win.eval(decodeURIComponent(url.slice('javascript:'.length))), undefined);
+  }
 });
 
 test('build：readTag', function () {

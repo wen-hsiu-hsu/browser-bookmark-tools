@@ -21,7 +21,9 @@ function toast(msg, type, duration) {
   } else {
     el = d.createElement('div');
     el.id = '__bmt_toast__';
+    // all:initial 隔離頁面 CSS（繼承的字距、選擇器套到的 margin/width 等）
     el.style.cssText =
+      'all:initial;display:block;box-sizing:border-box;' +
       'position:fixed;top:20px;left:50%;transform:translateX(-50%);' +
       'z-index:2147483647;color:#fff;padding:10px 16px;border-radius:6px;' +
       'box-shadow:0 4px 12px rgba(0,0,0,.2);' +

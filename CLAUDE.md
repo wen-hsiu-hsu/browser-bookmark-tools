@@ -25,14 +25,15 @@ bookmarks/<name>/     每個書籤一個資料夾（名稱用 kebab-case）
   bookmarklet.txt     建置產物：一行 javascript: 網址，使用者直接複製
 bookmarks/_template/  新書籤範本（複製後改名使用）
 shared/               共用元件，規格見 shared/README.md
-scripts/build.js      展開 @include → Terser（ES5）→ 將 % 跳脫成 %25
+scripts/build.js      展開 @include → 驗證 ES5（acorn）→ Terser → 結尾加 void 0 → 將 % 跳脫成 %25
 test/                 node:test + jsdom
 ```
 
 ## 撰寫規範
 
-- **ES5**：不使用 `let`、`const`、箭頭函式、template literal、`async`。Promise 只能用 `.then`，而且要先確認 API 存在。
+- **ES5**：建置時會用 acorn 驗證，不符合 ES5 就建置失敗。不使用 `let`、`const`、箭頭函式、template literal、`async`。Promise 只能用 `.then`，而且要先確認 API 存在。
 - 整支書籤包在 IIFE 內，`@include` 也寫在 IIFE 內部，不要建立全域變數。
+- 書籤結尾不需要自己加 `void 0`，建置時會自動加上。原因是 Terser 可能拆掉 IIFE，最後的值若變成字串，瀏覽器會用它取代整個頁面。
 - 注入頁面的 id／class／屬性一律使用 `__bmt_` 前綴。
 - **toast 回饋**：完成（成功、失敗、錯誤）時都要顯示 toast；有等待或讀秒時，用 `toast(msg, 'info', 0)` 持續更新文字。訊息使用繁體中文。
 - **複製**：一律使用共用的 `copyText()`，它會先試 clipboard API，失敗再 fallback 到 `execCommand('copy')`。
@@ -44,7 +45,7 @@ test/                 node:test + jsdom
 
 使用者自己複製 `bookmarklet.txt` 安裝，**所以無法得知他手上是哪個版本**。
 
-- `source.js` 的 `@version` 採 semver。任何行為變更都要升版，並在書籤 README 的「版本紀錄」加一列。
+- `source.js` 的 `@version` 採 semver。任何行為變更都要升版，並在書籤 README 的「版本紀錄」加一列 `| vX.Y.Z | ... |`。建置時會檢查這一列是否存在，缺少時會發出警告。
 - 書籤 README 要建議使用者用「`名稱 vX.Y.Z`」當書籤名稱，方便對照版本。
 - 修改 `shared/` 元件時，所有用到它的書籤都要升版並重新建置。
 - 新舊版本可能同時存在於使用者的瀏覽器中。更改 DOM id 或全域狀態時，要考慮與舊版的相容性（參考 toast 清除 `__lm_md_toast__` 的做法）。
