@@ -1,6 +1,6 @@
 /**
  * @name    Master.dev 工具
- * @version 1.0.0
+ * @version 1.1.0
  * @desc    Frontend Masters：浮動面板整合「目前這題轉 MD」「學習卡批次複製」「逐字稿複製」，附快捷鍵 ⌥⇧1~3
  *
  * 建置：npm run build -- fm-tools
@@ -15,7 +15,7 @@
   var d = document;
   var root = d.documentElement;
   var ID = '__bmt_fm_tools__';
-  var VERSION = '1.0.0';
+  var VERSION = '1.1.0';
 
   // 重複點書籤：同版本的面板已存在就展開，不建立第二個。
   // 不同版本（使用者換了新版書籤）：舊面板閒置時換成新版；執行中則請使用者稍後再試

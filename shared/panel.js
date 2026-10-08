@@ -1,7 +1,8 @@
 /* @include toast */
 
 /**
- * 共用浮動面板：可拖曳、可最小化、每個指令一顆按鈕＋快捷鍵（⌥⇧數字），執行中顯示視覺提示。
+ * 共用浮動面板：可拖曳、三種大小（展開／縮小／最小化）、每個指令一顆按鈕＋快捷鍵（⌥⇧數字），
+ * 執行中顯示視覺提示。
  * 規格見 shared/README.md。
  *
  * createPanel(opts) → api
@@ -12,7 +13,7 @@
  *   opts.version   版本字串，寫在 root 的 data-__bmt_ver（新版書籤用來辨認舊版面板）
  *   opts.commands  [{ id, label, key: '1'~'9', icon: [[tag, attrs], ...], run: function (ctx) }]
  *                  ctx.progress(text) 更新進度文字；ctx.done() 結束（只算一次）
- *   api.expand()   展開面板（重複點書籤時呼叫）
+ *   api.expand()   最小化時還原成最小化前的模式；其他模式只夾回視窗內（重複點書籤時呼叫）
  *   api.close()    移除面板並停用快捷鍵（執行中無效）
  *   api.busy()     是否有指令執行中
  *
@@ -38,16 +39,21 @@ function createPanel(opts) {
   var MINUS = [['path', { d: 'M6 12h12' }]];
   var CROSS = [['path', { d: 'M6 6l12 12M18 6L6 18' }]];
   var EXPAND = [['path', { d: 'M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6' }]];
+  var SHRINK = [['path', { d: 'M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7' }]];
+  var ICON_FG = '#fff'; // 標題列、縮小欄、膠囊上的控制鈕 icon
 
   var IDLE_MS = 15000;
   var busy = null; // 執行中的指令
   var anims = [];
   var watchdog = null;
 
-  /** 建立元素；css 開頭一律 all:initial，隔離頁面樣式。 */
+  /**
+   * 建立元素；css 開頭一律 all:initial，隔離頁面樣式。
+   * all:initial 會把 cursor 重設成 auto（文字上變成 text 游標），所以預設繼承父層。
+   */
   function el(tag, css, text) {
     var e = d.createElement(tag);
-    e.style.cssText = 'all:initial;box-sizing:border-box;font:' + FONT + ';color:inherit;' + (css || '');
+    e.style.cssText = 'all:initial;box-sizing:border-box;font:' + FONT + ';color:inherit;cursor:inherit;' + (css || '');
     if (text) e.textContent = text;
     return e;
   }
@@ -64,14 +70,15 @@ function createPanel(opts) {
     s.setAttribute('stroke-width', '2');
     s.setAttribute('stroke-linecap', 'round');
     s.setAttribute('stroke-linejoin', 'round');
-    // inline 樣式蓋過頁面 CSS（例如 svg{width:100%}、svg{fill:currentColor}）；presentation attribute 優先權最低
-    s.style.cssText = 'all:initial;display:block;flex:none;overflow:visible;width:' + size + 'px;height:' + size +
+    // inline 樣式蓋過頁面 CSS（例如 svg{width:100%}、svg{fill:currentColor}）；presentation attribute 優先權最低。
+    // all:initial 會把 color 重設成黑色，所以顏色一律直接傳入，不用 currentColor
+    s.style.cssText = 'all:initial;cursor:inherit;display:block;flex:none;overflow:visible;width:' + size + 'px;height:' + size +
       'px;fill:' + (fill ? color : 'none') + ';stroke:' + (fill ? 'none' : color) + ';stroke-width:2px;' +
       'stroke-linecap:round;stroke-linejoin:round';
     for (var i = 0; i < shapes.length; i++) {
       var c = d.createElementNS(SVG, shapes[i][0]);
       for (var k in shapes[i][1]) c.setAttribute(k, shapes[i][1][k]);
-      c.style.cssText = 'fill:inherit;stroke:inherit';
+      c.style.cssText = 'fill:inherit;stroke:inherit;cursor:inherit';
       s.appendChild(c);
     }
     return s;
@@ -96,17 +103,17 @@ function createPanel(opts) {
 
   function iconButton(shapes, label) {
     var b = el('button', 'width:28px;height:28px;display:flex;align-items:center;justify-content:center;' +
-      'border-radius:6px;color:#b4bac3;cursor:pointer;flex:none');
+      'border-radius:6px;cursor:pointer;flex:none');
     b.type = 'button';
     b.setAttribute('aria-label', label);
     b.title = label;
-    b.appendChild(icon(shapes, 16, 'currentColor'));
+    b.appendChild(icon(shapes, 16, ICON_FG));
     return b;
   }
 
-  /** 按鈕平常的底色：執行中的指令按鈕維持反白。 */
+  /** 按鈕平常的底色：執行中的指令按鈕（展開與縮小模式各一顆）維持反白。 */
   function restBg(b) {
-    return busy && busy.ui.btn === b ? 'rgba(255,255,255,.07)' : 'transparent';
+    return busy && (busy.ui.btn === b || busy.ui.cbtn === b) ? 'rgba(255,255,255,.07)' : 'transparent';
   }
 
   /**
@@ -121,6 +128,10 @@ function createPanel(opts) {
       b.style.background = restBg(b);
     });
     b.addEventListener('focus', function () {
+      // 滑鼠點擊也會觸發 focus：支援 :focus-visible 時只在鍵盤焦點顯示外框
+      try {
+        if (!b.matches(':focus-visible')) return;
+      } catch (e) {}
       b.style.outline = '2px solid ' + ACCENT;
       b.style.outlineOffset = '-2px';
     });
@@ -130,8 +141,9 @@ function createPanel(opts) {
   }
 
   // ---------- DOM ----------
-  var root = el('div', 'position:fixed;right:16px;bottom:16px;z-index:2147483646;color:' + FG + ';' +
-    'user-select:none;-webkit-user-select:none');
+  // 以右上角定位（right／top）：切換大小時右上角不動，最小化鈕附近的視線不會落空
+  var root = el('div', 'position:fixed;right:16px;top:16px;z-index:2147483646;color:' + FG + ';' +
+    'cursor:default;user-select:none;-webkit-user-select:none');
   root.id = opts.id;
   root.setAttribute('role', 'region');
   root.setAttribute('aria-label', opts.title);
@@ -144,10 +156,12 @@ function createPanel(opts) {
     'border-bottom:1px solid rgba(255,255,255,.08)');
   var headGrip = icon(GRIP, 14, MUTED, true);
   var title = el('div', 'flex-grow:1;font-weight:600;font-size:13px', opts.title);
+  var shrinkBtn = iconButton(SHRINK, '縮小');
   var minBtn = iconButton(MINUS, '最小化');
   var closeBtn = iconButton(CROSS, '關閉');
   head.appendChild(headGrip);
   head.appendChild(title);
+  head.appendChild(shrinkBtn);
   head.appendChild(minBtn);
   head.appendChild(closeBtn);
   var track = el('div', 'display:none;height:3px;background:rgba(255,255,255,.08);overflow:hidden');
@@ -168,19 +182,43 @@ function createPanel(opts) {
   miniIcon.appendChild(miniGrip);
   var miniLabel = el('span', 'font-weight:600;font-size:13px;padding:0 6px', opts.mini);
   var miniProg = el('span', 'display:none;font-size:12px;color:' + ACCENT + ';padding-right:4px');
-  var expandBtn = el('button', 'width:36px;height:36px;display:flex;align-items:center;justify-content:center;' +
+  var restoreBtn = el('button', 'width:36px;height:36px;display:flex;align-items:center;justify-content:center;' +
     'border-radius:18px;background:rgba(255,255,255,.08);cursor:pointer;flex:none');
-  expandBtn.type = 'button';
-  expandBtn.setAttribute('aria-label', '展開');
-  expandBtn.title = '展開';
-  expandBtn.appendChild(icon(EXPAND, 16, 'currentColor'));
+  restoreBtn.type = 'button';
+  restoreBtn.setAttribute('aria-label', '還原');
+  restoreBtn.title = '還原';
+  restoreBtn.appendChild(icon(EXPAND, 16, ICON_FG));
   mini.appendChild(miniIcon);
   mini.appendChild(miniLabel);
   mini.appendChild(miniProg);
-  mini.appendChild(expandBtn);
+  mini.appendChild(restoreBtn);
+
+  // 縮小狀態：直排 icon 欄（拖曳點、進度條、指令 icon、控制鈕），不顯示文字
+  var compact = el('div', 'display:none;flex-direction:column;align-items:center;gap:2px;width:44px;' +
+    'padding:0 4px 6px;background:' + BG + ';border-radius:10px;overflow:hidden;box-shadow:' + SHADOW);
+  var cGrip = el('div', 'display:flex;justify-content:center;align-self:stretch;margin:0 -4px;padding:8px 0;cursor:move');
+  cGrip.appendChild(icon(GRIP, 14, MUTED, true));
+  var cTrack = el('div', 'display:none;align-self:stretch;margin:0 -4px 4px;height:3px;' +
+    'background:rgba(255,255,255,.08);overflow:hidden');
+  var cBar = el('div', 'display:block;width:40%;height:3px;background:' + ACCENT);
+  cTrack.appendChild(cBar);
+  var cList = el('div', 'display:flex;flex-direction:column;align-items:center;gap:2px');
+  var cSep = el('div', 'display:block;width:24px;height:1px;margin:4px 0;background:rgba(255,255,255,.12)');
+  var cExpandBtn = iconButton(EXPAND, '展開');
+  var cMinBtn = iconButton(MINUS, '最小化');
+  var cCloseBtn = iconButton(CROSS, '關閉');
+  compact.appendChild(cGrip);
+  compact.appendChild(cTrack);
+  compact.appendChild(cList);
+  compact.appendChild(cSep);
+  compact.appendChild(cExpandBtn);
+  compact.appendChild(cMinBtn);
+  compact.appendChild(cCloseBtn);
 
   root.appendChild(full);
   root.appendChild(mini);
+  root.appendChild(compact);
+  var closers = [closeBtn, cCloseBtn];
 
   // 指令按鈕
   var cmds = opts.commands;
@@ -191,7 +229,7 @@ function createPanel(opts) {
       'cursor:pointer;background:transparent');
     b.type = 'button';
     b.setAttribute('data-__bmt_cmd', c.id);
-    b.title = c.label + '（⌥⇧' + c.key + '）';
+    b.title = cmdTitle(c);
     var ic = el('span', 'display:flex;align-items:center;flex:none');
     ic.appendChild(icon(c.icon, 20, ACCENT));
     var label = el('span', 'flex-grow:1', c.label);
@@ -206,50 +244,86 @@ function createPanel(opts) {
     b.addEventListener('click', function () {
       run(c);
     });
-    c.ui = { btn: b, icon: ic, kbd: kbd, prog: prog };
+    // 縮小模式的按鈕：只有 icon，名稱與快捷鍵放在 title（hover 提示）
+    var cb = el('button', 'width:36px;height:36px;display:flex;align-items:center;justify-content:center;' +
+      'border-radius:6px;cursor:pointer;background:transparent;flex:none');
+    cb.type = 'button';
+    cb.setAttribute('data-__bmt_ccmd', c.id);
+    cb.setAttribute('aria-label', c.label);
+    cb.title = b.title;
+    var cic = el('span', 'display:flex;align-items:center;flex:none');
+    cic.appendChild(icon(c.icon, 20, ACCENT));
+    cb.appendChild(cic);
+    hover(cb, 'rgba(255,255,255,.07)');
+    cb.addEventListener('click', function () {
+      run(c);
+    });
+    c.ui = { btn: b, icon: ic, kbd: kbd, prog: prog, cbtn: cb, cicon: cic };
     list.appendChild(b);
+    cList.appendChild(cb);
   }
-  hover(minBtn, 'rgba(255,255,255,.08)');
-  hover(closeBtn, 'rgba(255,255,255,.08)');
-  hover(expandBtn, 'rgba(255,255,255,.16)');
-  expandBtn.addEventListener('mouseleave', function () {
-    expandBtn.style.background = 'rgba(255,255,255,.08)';
+  var ctrls = [shrinkBtn, minBtn, closeBtn, cExpandBtn, cMinBtn, cCloseBtn];
+  for (i = 0; i < ctrls.length; i++) hover(ctrls[i], 'rgba(255,255,255,.08)');
+  hover(restoreBtn, 'rgba(255,255,255,.16)');
+  restoreBtn.addEventListener('mouseleave', function () {
+    restoreBtn.style.background = 'rgba(255,255,255,.08)';
   });
 
   // ---------- 狀態 ----------
-  function minimized() {
-    return mini.style.display !== 'none';
-  }
+  var mode = 'full'; // 'full' | 'compact' | 'mini'
+  var lastMode = 'full'; // 最小化前的模式，膠囊還原時回到這裡
 
-  function setMinimized(on) {
-    full.style.display = on ? 'none' : 'block';
-    mini.style.display = on ? 'flex' : 'none';
+  /**
+   * 切換模式。被隱藏的按鈕收不到 mouseleave／blur，先清掉 hover 底色與焦點外框；
+   * 焦點原本在面板內（鍵盤操作）時，移到新模式的對應控制鈕，避免焦點掉回 body。
+   */
+  function setMode(m) {
+    if (m === 'mini' && mode !== 'mini') lastMode = mode;
+    mode = m;
+    var focused = root.contains(d.activeElement);
+    for (var i = 0; i < ctrls.length; i++) {
+      ctrls[i].style.background = 'transparent';
+      ctrls[i].style.outline = 'none';
+    }
+    restoreBtn.style.background = 'rgba(255,255,255,.08)';
+    restoreBtn.style.outline = 'none';
+    full.style.display = m === 'full' ? 'block' : 'none';
+    compact.style.display = m === 'compact' ? 'flex' : 'none';
+    mini.style.display = m === 'mini' ? 'flex' : 'none';
     keepInView();
+    if (focused) ({ full: shrinkBtn, compact: cExpandBtn, mini: restoreBtn })[m].focus();
   }
 
+  /** 視窗大小：標準模式用 clientWidth／Height（不含捲軸）；quirks mode 下那是 html 的大小，改用 inner*。 */
   function viewport() {
+    var std = d.compatMode === 'CSS1Compat';
     return {
-      w: d.documentElement.clientWidth || w.innerWidth,
-      h: d.documentElement.clientHeight || w.innerHeight
+      w: (std && d.documentElement.clientWidth) || w.innerWidth,
+      h: (std && d.documentElement.clientHeight) || w.innerHeight
     };
   }
 
   /**
-   * 面板以右下角定位（right／bottom）。切換大小、展開、視窗縮放後量一次，
+   * 面板以右上角定位（right／top）。切換大小、展開、視窗縮放後量一次，
    * 把整個面板夾回視窗內，避免標題列跑到畫面外而救不回來。
    */
   function keepInView() {
     var r = root.getBoundingClientRect();
     var v = viewport();
     var right = parseFloat(root.style.right) || 0;
-    var bottom = parseFloat(root.style.bottom) || 0;
+    var top = parseFloat(root.style.top) || 0;
     root.style.right = Math.min(Math.max(right, 0), Math.max(v.w - r.width, 0)) + 'px';
-    root.style.bottom = Math.min(Math.max(bottom, 0), Math.max(v.h - r.height, 0)) + 'px';
+    root.style.top = Math.min(Math.max(top, 0), Math.max(v.h - r.height, 0)) + 'px';
+  }
+
+  function cmdTitle(c) {
+    return c.label + '（⌥⇧' + c.key + '）';
   }
 
   function setProgress(text) {
     if (!busy) return;
     busy.ui.prog.textContent = text || '';
+    busy.ui.cbtn.title = text ? busy.label + '：' + text : cmdTitle(busy);
     miniProg.textContent = text || '';
     miniProg.style.display = text ? 'inline' : 'none';
   }
@@ -260,27 +334,43 @@ function createPanel(opts) {
     var ring = c ? '0 0 0 2px ' + ACCENT + ',' + SHADOW : SHADOW;
     full.style.boxShadow = ring;
     mini.style.boxShadow = ring;
+    compact.style.boxShadow = ring;
     track.style.display = c ? 'block' : 'none';
-    closeBtn.disabled = !!c;
-    closeBtn.style.opacity = c ? '.4' : '1';
-    closeBtn.style.cursor = c ? 'default' : 'pointer';
+    cTrack.style.display = c ? 'block' : 'none';
+    for (var j = 0; j < closers.length; j++) {
+      closers[j].disabled = !!c;
+      closers[j].style.opacity = c ? '.4' : '1';
+      closers[j].style.cursor = c ? 'default' : 'pointer';
+      closers[j].style.background = 'transparent';
+      closers[j].style.outline = 'none';
+    }
     stopAnims();
     for (var i = 0; i < cmds.length; i++) {
       var u = cmds[i].ui;
       var me = cmds[i] === c;
-      u.btn.disabled = !!c;
-      u.btn.style.cursor = c ? 'default' : 'pointer';
-      u.btn.style.opacity = c && !me ? '.4' : '1';
-      u.btn.style.background = restBg(u.btn);
+      var btns = [u.btn, u.cbtn];
+      for (j = 0; j < btns.length; j++) {
+        // 停用的按鈕被瀏覽器移除焦點時不一定觸發 blur，外框會殘留
+        if (c) btns[j].style.outline = 'none';
+        btns[j].disabled = !!c;
+        btns[j].style.cursor = c ? 'default' : 'pointer';
+        btns[j].style.opacity = c && !me ? '.4' : '1';
+        btns[j].style.background = restBg(btns[j]);
+      }
+      u.cbtn.title = cmdTitle(cmds[i]);
       u.kbd.style.display = c ? 'none' : 'inline-block';
       u.prog.style.display = me ? 'inline' : 'none';
       u.prog.textContent = '';
       u.icon.replaceChild(me ? spinner(20) : icon(cmds[i].icon, 20, ACCENT), u.icon.firstChild);
+      u.cicon.replaceChild(me ? spinner(20) : icon(cmds[i].icon, 20, ACCENT), u.cicon.firstChild);
     }
     miniIcon.replaceChild(c ? spinner(16) : miniGrip, miniIcon.firstChild);
     miniProg.style.display = 'none';
     miniProg.textContent = '';
-    if (c) animate(bar, [{ transform: 'translateX(-100%)' }, { transform: 'translateX(260%)' }], 1200);
+    if (c) {
+      animate(bar, [{ transform: 'translateX(-100%)' }, { transform: 'translateX(260%)' }], 1200);
+      animate(cBar, [{ transform: 'translateX(-100%)' }, { transform: 'translateX(260%)' }], 1200);
+    }
   }
 
   /**
@@ -335,7 +425,7 @@ function createPanel(opts) {
   }
 
   // ---------- 拖曳 ----------
-  /** 拖曳開始時量一次尺寸，整個面板限制在視窗內；位置存成 right／bottom。 */
+  /** 拖曳開始時量一次尺寸，整個面板限制在視窗內；位置存成 right／top。 */
   function startDrag(e) {
     if (e.button !== 0) return;
     for (var t = e.target; t && t !== root; t = t.parentNode) if (t.tagName === 'BUTTON') return;
@@ -351,7 +441,7 @@ function createPanel(opts) {
       var x = Math.min(Math.max(r.left + ev.clientX - sx, 0), Math.max(vw - r.width, 0));
       var y = Math.min(Math.max(r.top + ev.clientY - sy, 0), Math.max(vh - r.height, 0));
       root.style.right = vw - x - r.width + 'px';
-      root.style.bottom = vh - y - r.height + 'px';
+      root.style.top = y + 'px';
     }
     function up() {
       d.removeEventListener('mousemove', move, true);
@@ -364,6 +454,7 @@ function createPanel(opts) {
   }
   head.addEventListener('mousedown', startDrag);
   mini.addEventListener('mousedown', startDrag);
+  cGrip.addEventListener('mousedown', startDrag);
 
   // ---------- 快捷鍵：⌥⇧1~9 ----------
   function editable(t) {
@@ -395,11 +486,17 @@ function createPanel(opts) {
   }
 
   // ---------- 最小化／關閉 ----------
-  minBtn.addEventListener('click', function () {
-    setMinimized(true);
-  });
-  expandBtn.addEventListener('click', function () {
-    setMinimized(false);
+  function on(b, m) {
+    b.addEventListener('click', function () {
+      setMode(m);
+    });
+  }
+  on(shrinkBtn, 'compact');
+  on(minBtn, 'mini');
+  on(cExpandBtn, 'full');
+  on(cMinBtn, 'mini');
+  restoreBtn.addEventListener('click', function () {
+    setMode(lastMode);
   });
 
   function close() {
@@ -408,13 +505,17 @@ function createPanel(opts) {
     if (root.parentNode) root.parentNode.removeChild(root);
   }
   closeBtn.addEventListener('click', close);
+  cCloseBtn.addEventListener('click', close);
 
   foot.textContent = opts.footer || '';
   (d.body || d.documentElement).appendChild(root);
+  // 第一次出現在右下角：量一次高度換算成 top（之後一律以右上角為準）
+  root.style.top = viewport().h - root.getBoundingClientRect().height - 16 + 'px';
+  keepInView();
 
   var api = {
     expand: function () {
-      if (minimized()) setMinimized(false);
+      if (mode === 'mini') setMode(lastMode);
       else keepInView();
     },
     close: close,

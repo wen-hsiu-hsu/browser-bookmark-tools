@@ -6,7 +6,7 @@
 
 | 書籤 | 目前版本 | 說明 |
 |---|---|---|
-| [Master.dev 工具](bookmarks/fm-tools/) | v1.0.0 | Frontend Masters：浮動面板整合下列三個 FM 書籤，可拖曳、可最小化，快捷鍵 ⌥⇧1～3 |
+| [Master.dev 工具](bookmarks/fm-tools/) | v1.1.0 | Frontend Masters：浮動面板整合下列三個 FM 書籤，可拖曳，可切換展開／縮小／最小化，快捷鍵 ⌥⇧1～3 |
 | [FM 學習卡批次複製](bookmarks/fm-flashcard-batch/) | v1.0.0 | （停止維護，請改用 Master.dev 工具）Frontend Masters Learning Mode：從第一張開始逐張擷取 Flashcard，合併成 Markdown 後一次複製 |
 | [FM 學習卡轉 Markdown](bookmarks/fm-learning-md/) | v1.1.0 | （停止維護，請改用 Master.dev 工具）Frontend Masters Learning Mode：把 Quiz／Flashcard 轉成 Markdown 並複製 |
 | [FM 逐字稿複製](bookmarks/fm-transcript-copy/) | v1.1.0 | （停止維護，請改用 Master.dev 工具）Frontend Masters 課程頁：把逐字稿整理成純文字並複製（面板沒開時會自動打開） |
