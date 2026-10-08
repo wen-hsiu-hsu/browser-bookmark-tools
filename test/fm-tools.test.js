@@ -65,6 +65,7 @@ async function setup(html) {
   }).window;
   var r = { win: win, d: win.document, copied: [], tick: fakeTimers(win) };
   Object.defineProperty(win.navigator, 'clipboard', {
+    configurable: true,
     value: { writeText: function (t) { r.copied.push(t); return Promise.resolve(); } }
   });
   win.document.execCommand = function () { return false; };
@@ -242,4 +243,184 @@ test('注入頁面的 id 使用 __bmt_ 前綴', async function () {
 test('建置結果不含控制字元', async function () {
   var url = await build.toBookmarklet(SRC);
   assert.ok(!/[\x00-\x1f\x7f]/.test(url));
+});
+
+// ---- code review 補充 ----
+
+function idle(r) {
+  return ['md', 'batch', 'transcript'].every(function (id) { return !r.btn(id).disabled; }) &&
+    !/^0 0 0 2px/.test(parts(r).full.style.boxShadow);
+}
+
+test('各指令結束後面板都回到閒置狀態', async function () {
+  var r = await setup(CARD);
+  r.btn('md').click();
+  await flush();
+  assert.ok(idle(r), 'md 成功');
+  r.d.querySelector('.LM-Flashcard').remove();
+  r.btn('md').click();
+  assert.ok(idle(r), 'md 失敗');
+  r.btn('batch').click();
+  assert.ok(idle(r), 'batch 找不到');
+  r.btn('transcript').click();
+  assert.ok(idle(r), 'transcript 找不到');
+});
+
+test('舊版批次書籤執行中（共用標記）→ 提示批次複製執行中，面板回到閒置', async function () {
+  var r = await setup(CARD);
+  r.d.documentElement.setAttribute('data-__bmt_fm_batch', r.win.Date.now());
+  r.btn('batch').click();
+  assert.strictEqual(r.toast(), '批次複製執行中');
+  assert.ok(idle(r));
+  assert.deepStrictEqual(r.copied, []);
+});
+
+test('舊版逐字稿書籤等待中（共用標記）→ 不點按鈕，複製成功後也不關閉', async function () {
+  var r = await setup('<button class="FMPlayer2-RibbonButton" data-fmp-tooltip="Transcripts (R)"></button>');
+  var clicks = 0;
+  r.d.querySelector('button.FMPlayer2-RibbonButton').addEventListener('click', function () { clicks++; });
+  r.d.documentElement.setAttribute('data-__bmt_fm_opening', r.win.Date.now());
+  r.btn('transcript').click();
+  var box = r.d.createElement('div');
+  box.className = 'transcripts FMPlayer2-Transcripts active';
+  box.innerHTML = '<a class="line">x</a>';
+  r.d.body.appendChild(box);
+  r.tick(1000);
+  await flush();
+  assert.deepStrictEqual(r.copied, ['x']);
+  assert.strictEqual(clicks, 0);
+});
+
+/** 開關式 Transcripts 按鈕；onOpen(panel) 在開啟時呼叫。回傳點擊次數。 */
+function toggleButton(r, onOpen) {
+  var clicks = { n: 0 };
+  r.d.querySelector('button.FMPlayer2-RibbonButton').addEventListener('click', function () {
+    clicks.n++;
+    var p = r.d.querySelector('.FMPlayer2-Transcripts');
+    if (p) return p.classList.toggle('active');
+    p = r.d.createElement('div');
+    p.className = 'FMPlayer2-Transcripts active';
+    r.d.body.appendChild(p);
+    onOpen(p);
+  });
+  return clicks;
+}
+
+var TS_BTN = '<button class="FMPlayer2-RibbonButton" data-fmp-tooltip="Transcripts (R)"></button>';
+
+test('逐字稿：使用者在複製前自己關掉面板 → 不再點按鈕', async function () {
+  var r = await setup(TS_BTN);
+  var clicks = toggleButton(r, function (p) {
+    r.win.setTimeout(function () {
+      var t = r.d.createElement('div');
+      t.className = 'transcripts';
+      t.innerHTML = '<a class="line">x</a>';
+      p.appendChild(t);
+      p.classList.remove('active'); // 使用者手動關閉
+    }, 300);
+  });
+  r.btn('transcript').click();
+  r.tick(1000);
+  await flush();
+  assert.deepStrictEqual(r.copied, ['x']);
+  assert.strictEqual(clicks.n, 1);
+});
+
+test('逐字稿：逾時當下內容仍在變動 → 複製目前內容，但不關閉面板', async function () {
+  var r = await setup(TS_BTN);
+  var clicks = toggleButton(r, function (p) {
+    var t = r.d.createElement('div');
+    t.className = 'transcripts';
+    p.appendChild(t);
+    var n = 0;
+    (function add() {
+      var a = r.d.createElement('a');
+      a.className = 'line';
+      a.textContent = 'L' + n++;
+      t.appendChild(a);
+      r.win.setTimeout(add, 100); // 持續增加，永遠不穩定
+    })();
+  });
+  r.btn('transcript').click();
+  r.tick(3200);
+  await flush();
+  assert.strictEqual(r.copied.length, 1);
+  assert.strictEqual(clicks.n, 1);
+  assert.ok(r.d.querySelector('.FMPlayer2-Transcripts.active'));
+});
+
+test('看門狗：指令一直沒結束 → 15 秒後解除執行中並提示', async function () {
+  var r = await setup(CARD);
+  Object.defineProperty(r.win.navigator, 'clipboard', {
+    value: { writeText: function () { return new r.win.Promise(function () {}); } }
+  });
+  r.btn('md').click();
+  r.tick(14000);
+  assert.ok(!idle(r));
+  r.tick(1500);
+  assert.ok(idle(r));
+  assert.strictEqual(r.toast(), '指令沒有回應，已解除執行中狀態');
+});
+
+test('執行中按快捷鍵：短暫提示後恢復原本的進度 toast', async function () {
+  var r = await setup('<div class="transcripts"></div><div class="FMPlayer2-Transcripts active"></div>');
+  r.btn('transcript').click();
+  assert.strictEqual(r.toast(), '正在開啟 Transcripts…');
+  r.key('Digit1');
+  assert.strictEqual(r.toast(), '指令執行中');
+  r.tick(1600);
+  assert.strictEqual(r.toast(), '正在開啟 Transcripts…');
+});
+
+test('拖曳：滑鼠在視窗外放開（buttons=0）就停止', async function () {
+  var r = await setup();
+  var p = r.panel();
+  var win = r.win;
+  p.getBoundingClientRect = function () {
+    return { left: 100, top: 100, width: 264, height: 200, right: 364, bottom: 300 };
+  };
+  var head = parts(r).full.children[0];
+  head.dispatchEvent(new win.MouseEvent('mousedown', { clientX: 110, clientY: 110, button: 0, buttons: 1, bubbles: true }));
+  r.d.dispatchEvent(new win.MouseEvent('mousemove', { clientX: 120, clientY: 120, buttons: 0, bubbles: true }));
+  var right = p.style.right;
+  r.d.dispatchEvent(new win.MouseEvent('mousemove', { clientX: 300, clientY: 300, buttons: 1, bubbles: true }));
+  assert.strictEqual(p.style.right, right);
+});
+
+test('視窗縮小或重新點書籤：面板被夾回視窗內', async function () {
+  var r = await setup();
+  var p = r.panel();
+  p.getBoundingClientRect = function () {
+    return { left: 0, top: 0, width: 264, height: 200, right: 264, bottom: 200 };
+  };
+  p.style.right = '5000px';
+  p.style.bottom = '-50px';
+  r.win.dispatchEvent(new r.win.Event('resize'));
+  assert.strictEqual(p.style.right, r.win.innerWidth - 264 + 'px');
+  assert.strictEqual(p.style.bottom, '0px');
+  p.style.right = '5000px';
+  r.run();
+  assert.strictEqual(p.style.right, r.win.innerWidth - 264 + 'px');
+});
+
+test('面板被頁面移除後：舊的快捷鍵監聽失效，重新點書籤的新面板可正常使用', async function () {
+  var r = await setup(CARD);
+  r.panel().remove();
+  r.key('Digit1');
+  await flush();
+  assert.deepStrictEqual(r.copied, []);
+  r.run();
+  r.key('Digit1');
+  await flush();
+  assert.deepStrictEqual(r.copied, ['### Q\n\nA']);
+});
+
+test('不同版本的面板：閒置時換成新版', async function () {
+  var r = await setup();
+  var old = r.panel();
+  old.setAttribute('data-__bmt_ver', '0.9.0');
+  r.run();
+  assert.notStrictEqual(r.panel(), old);
+  assert.strictEqual(r.d.querySelectorAll('#' + ID).length, 1);
+  assert.strictEqual(r.panel().getAttribute('data-__bmt_ver'), '1.0.0');
 });

@@ -118,3 +118,47 @@ Frontend Masters Learning Mode 專用：`toMd(el)` 把元素轉成 Markdown。
    - 失敗：保留按鈕讓使用者再試，並顯示 `複製失敗`。
 
 適用情境：批次作業跑太久，超過瀏覽器允許寫入剪貼簿的時限（使用者點擊後 Firefox 約 5 秒，Safari 更嚴格）。
+
+---
+
+## panel
+
+`createPanel(opts) → api`：浮動指令面板，會自動 include `toast`。使用者：`fm-tools`。
+
+### 參數
+| 欄位 | 說明 |
+|---|---|
+| `id` | 面板 id，需以 `__bmt_` 開頭 |
+| `title` | 展開時的標題，也作為 `aria-label` |
+| `mini` | 最小化膠囊上的短名稱 |
+| `footer` | 底部說明文字 |
+| `version` | 寫入 `data-__bmt_ver`，讓新版書籤辨認舊版面板 |
+| `commands` | `[{ id, key: '1'~'9', label, icon: [[tag, attrs], ...], run: function (ctx) }]` |
+
+`run(ctx)`：`ctx.progress(text)` 更新進度文字；`ctx.done()` 結束指令（重複呼叫無效）。**每條路徑最後都必須呼叫 `done()`**。
+
+`api`：`expand()`（展開並夾回視窗內）、`close()`（執行中無效）、`busy()`。面板元素上也掛著 `__bmtPanel = api`，重複點書籤時可以拿到。
+
+### 外觀
+| 項目 | 規格 |
+|---|---|
+| 位置 | `position:fixed`，預設 `right:16px; bottom:16px`，`z-index:2147483646`（toast 在它上面） |
+| 展開 | 寬 264px，底色 `#1c1f24`，圓角 10px；按鈕高 44px，左側 20px 線條 icon，右側 `<kbd>⌥⇧N</kbd>` |
+| 最小化 | 高 44px 的膠囊：拖曳點、短名稱、展開鈕 |
+| 強調色 | `#7cb7ff`（icon、外框、進度條、進度文字） |
+| 樣式隔離 | 每個元素的 inline 樣式都以 `all:initial` 開頭；SVG 的尺寸和 fill／stroke 也寫在 inline 樣式中，避免被頁面的 `svg{...}` 規則影響 |
+| 不注入 `<style>` | 嚴格的 CSP 會擋 inline `<style>`。hover 底色和鍵盤焦點外框都用事件切換 inline 樣式 |
+
+### 行為
+| 項目 | 規格 |
+|---|---|
+| 拖曳 | 在標題列或膠囊上按住左鍵拖曳（從按鈕上開始不算）。拖曳開始時量一次尺寸，整個面板限制在視窗內，位置存成 `right`／`bottom`。移動時沒按著左鍵，或視窗 blur，就結束拖曳 |
+| 夾回視窗 | 切換最小化、`expand()`、視窗 `resize` 時，量一次尺寸並把面板夾回視窗內 |
+| 快捷鍵 | `window` capture 階段的 keydown。用 `e.code` 比對 `Digit1`～`Digit9`，條件是 Alt＋Shift、沒有 Ctrl／Meta、焦點不在輸入框。沒有對應指令的數字不攔截。長按連發（`e.repeat`）不觸發 |
+| 執行中 | 外框亮起（`0 0 0 2px` 強調色）；標題下出現 3px 進度條；指令 icon 換成轉圈並顯示進度；其他按鈕與 ✕ 停用；root 加上 `aria-busy="true"` |
+| 執行中再觸發 | 顯示 `指令執行中` 1.5 秒，之後恢復原本持續顯示的 info toast |
+| 看門狗 | 執行中超過 15 秒沒有呼叫 `progress()`／`done()`，就自動解除，並顯示 `指令沒有回應，已解除執行中狀態` |
+| 同步錯誤 | `run()` 同步拋錯時解除執行中，並顯示 `執行失敗：<訊息>` |
+| 關閉 | 移除面板並解除 keydown／resize 監聽 |
+| 面板被頁面移除 | 下一次按鍵時發現 root 已不在文件中，就自動解除監聽 |
+| 動畫 | 使用 Web Animations API（`el.animate`）；不支援時不動畫，其他狀態不受影響 |

@@ -9,10 +9,15 @@
  *   opts.title     展開時的標題
  *   opts.mini      最小化時顯示的短名稱
  *   opts.footer    底部說明文字（例如版本）
+ *   opts.version   版本字串，寫在 root 的 data-__bmt_ver（新版書籤用來辨認舊版面板）
  *   opts.commands  [{ id, label, key: '1'~'9', icon: [[tag, attrs], ...], run: function (ctx) }]
  *                  ctx.progress(text) 更新進度文字；ctx.done() 結束（只算一次）
  *   api.expand()   展開面板（重複點書籤時呼叫）
  *   api.close()    移除面板並停用快捷鍵（執行中無效）
+ *   api.busy()     是否有指令執行中
+ *
+ * 看門狗：執行中超過 IDLE_MS 沒有呼叫 progress()／done()，視為卡住，自動解除並提示，
+ * 避免非同步流程中途拋錯時面板永遠停在執行中。
  *
  * 不使用 <style>：嚴格 CSP 會擋 inline <style>，但不擋 CSSOM（el.style）與 Web Animations。
  */
@@ -34,8 +39,10 @@ function createPanel(opts) {
   var CROSS = [['path', { d: 'M6 6l12 12M18 6L6 18' }]];
   var EXPAND = [['path', { d: 'M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6' }]];
 
+  var IDLE_MS = 15000;
   var busy = null; // 執行中的指令
   var anims = [];
+  var watchdog = null;
 
   /** 建立元素；css 開頭一律 all:initial，隔離頁面樣式。 */
   function el(tag, css, text) {
@@ -57,10 +64,14 @@ function createPanel(opts) {
     s.setAttribute('stroke-width', '2');
     s.setAttribute('stroke-linecap', 'round');
     s.setAttribute('stroke-linejoin', 'round');
-    s.style.cssText = 'display:block;flex:none';
+    // inline 樣式蓋過頁面 CSS（例如 svg{width:100%}、svg{fill:currentColor}）；presentation attribute 優先權最低
+    s.style.cssText = 'all:initial;display:block;flex:none;overflow:visible;width:' + size + 'px;height:' + size +
+      'px;fill:' + (fill ? color : 'none') + ';stroke:' + (fill ? 'none' : color) + ';stroke-width:2px;' +
+      'stroke-linecap:round;stroke-linejoin:round';
     for (var i = 0; i < shapes.length; i++) {
       var c = d.createElementNS(SVG, shapes[i][0]);
       for (var k in shapes[i][1]) c.setAttribute(k, shapes[i][1][k]);
+      c.style.cssText = 'fill:inherit;stroke:inherit';
       s.appendChild(c);
     }
     return s;
@@ -93,13 +104,28 @@ function createPanel(opts) {
     return b;
   }
 
-  /** 滑鼠移入時加底色（不用 :hover，因為不注入 <style>）。 */
+  /** 按鈕平常的底色：執行中的指令按鈕維持反白。 */
+  function restBg(b) {
+    return busy && busy.ui.btn === b ? 'rgba(255,255,255,.07)' : 'transparent';
+  }
+
+  /**
+   * 滑鼠移入加底色、鍵盤焦點加外框（不用 :hover／:focus-visible，因為不注入 <style>；
+   * all:initial 也會清掉瀏覽器預設的焦點外框）。
+   */
   function hover(b, bg) {
     b.addEventListener('mouseenter', function () {
       if (!b.disabled) b.style.background = bg;
     });
     b.addEventListener('mouseleave', function () {
-      b.style.background = 'transparent';
+      b.style.background = restBg(b);
+    });
+    b.addEventListener('focus', function () {
+      b.style.outline = '2px solid ' + ACCENT;
+      b.style.outlineOffset = '-2px';
+    });
+    b.addEventListener('blur', function () {
+      b.style.outline = 'none';
     });
   }
 
@@ -107,6 +133,9 @@ function createPanel(opts) {
   var root = el('div', 'position:fixed;right:16px;bottom:16px;z-index:2147483646;color:' + FG + ';' +
     'user-select:none;-webkit-user-select:none');
   root.id = opts.id;
+  root.setAttribute('role', 'region');
+  root.setAttribute('aria-label', opts.title);
+  root.setAttribute('data-__bmt_ver', opts.version || '');
 
   // 展開狀態
   var full = el('div', 'display:block;width:264px;background:' + BG + ';border-radius:10px;overflow:hidden;' +
@@ -182,6 +211,10 @@ function createPanel(opts) {
   }
   hover(minBtn, 'rgba(255,255,255,.08)');
   hover(closeBtn, 'rgba(255,255,255,.08)');
+  hover(expandBtn, 'rgba(255,255,255,.16)');
+  expandBtn.addEventListener('mouseleave', function () {
+    expandBtn.style.background = 'rgba(255,255,255,.08)';
+  });
 
   // ---------- 狀態 ----------
   function minimized() {
@@ -194,11 +227,24 @@ function createPanel(opts) {
     keepInView();
   }
 
-  /** 面板以右下角定位，切換大小後若超出視窗左／上緣就推回來（量一次）。 */
+  function viewport() {
+    return {
+      w: d.documentElement.clientWidth || w.innerWidth,
+      h: d.documentElement.clientHeight || w.innerHeight
+    };
+  }
+
+  /**
+   * 面板以右下角定位（right／bottom）。切換大小、展開、視窗縮放後量一次，
+   * 把整個面板夾回視窗內，避免標題列跑到畫面外而救不回來。
+   */
   function keepInView() {
     var r = root.getBoundingClientRect();
-    if (r.left < 0) root.style.right = Math.max(0, parseFloat(root.style.right) + r.left) + 'px';
-    if (r.top < 0) root.style.bottom = Math.max(0, parseFloat(root.style.bottom) + r.top) + 'px';
+    var v = viewport();
+    var right = parseFloat(root.style.right) || 0;
+    var bottom = parseFloat(root.style.bottom) || 0;
+    root.style.right = Math.min(Math.max(right, 0), Math.max(v.w - r.width, 0)) + 'px';
+    root.style.bottom = Math.min(Math.max(bottom, 0), Math.max(v.h - r.height, 0)) + 'px';
   }
 
   function setProgress(text) {
@@ -210,6 +256,7 @@ function createPanel(opts) {
 
   function setBusy(c) {
     busy = c;
+    root.setAttribute('aria-busy', c ? 'true' : 'false');
     var ring = c ? '0 0 0 2px ' + ACCENT + ',' + SHADOW : SHADOW;
     full.style.boxShadow = ring;
     mini.style.boxShadow = ring;
@@ -224,7 +271,7 @@ function createPanel(opts) {
       u.btn.disabled = !!c;
       u.btn.style.cursor = c ? 'default' : 'pointer';
       u.btn.style.opacity = c && !me ? '.4' : '1';
-      u.btn.style.background = me ? 'rgba(255,255,255,.07)' : 'transparent';
+      u.btn.style.background = restBg(u.btn);
       u.kbd.style.display = c ? 'none' : 'inline-block';
       u.prog.style.display = me ? 'inline' : 'none';
       u.prog.textContent = '';
@@ -236,20 +283,49 @@ function createPanel(opts) {
     if (c) animate(bar, [{ transform: 'translateX(-100%)' }, { transform: 'translateX(260%)' }], 1200);
   }
 
+  /**
+   * 執行中又觸發指令：短暫顯示「指令執行中」，之後恢復原本持續顯示的進度 toast，
+   * 避免等待期間的提示被一則會自動消失的 toast 取代。
+   */
+  function remindBusy() {
+    var t = d.getElementById('__bmt_toast__');
+    var prev = t && t.style.opacity !== '0' && t.style.background === 'rgb(37, 99, 235)' ? t.textContent : null;
+    toast('指令執行中', 'info', 0);
+    var cur = busy;
+    setTimeout(function () {
+      var now = d.getElementById('__bmt_toast__');
+      if (!now || now.textContent !== '指令執行中') return; // 已被新的訊息取代
+      if (busy === cur && prev) toast(prev, 'info', 0);
+      else toast('指令執行中', 'info'); // 已結束或原本沒有進度訊息：照常淡出
+    }, 1500);
+  }
+
   function run(c) {
-    if (busy) return toast('指令執行中', 'info');
+    if (busy) return remindBusy();
     var finished = false;
     setBusy(c);
+    function arm() {
+      clearTimeout(watchdog);
+      watchdog = setTimeout(function () {
+        if (finished) return;
+        ctx.done();
+        toast('指令沒有回應，已解除執行中狀態', 'error');
+      }, IDLE_MS);
+    }
     var ctx = {
       progress: function (text) {
-        if (!finished) setProgress(text);
+        if (finished) return;
+        setProgress(text);
+        arm();
       },
       done: function () {
         if (finished) return;
         finished = true;
+        clearTimeout(watchdog);
         if (busy === c) setBusy(null);
       }
     };
+    arm();
     try {
       c.run(ctx);
     } catch (e) {
@@ -265,8 +341,9 @@ function createPanel(opts) {
     for (var t = e.target; t && t !== root; t = t.parentNode) if (t.tagName === 'BUTTON') return;
     e.preventDefault(); // 避免選取文字
     var r = root.getBoundingClientRect();
-    var vw = d.documentElement.clientWidth || w.innerWidth;
-    var vh = d.documentElement.clientHeight || w.innerHeight;
+    var v = viewport();
+    var vw = v.w;
+    var vh = v.h;
     var sx = e.clientX;
     var sy = e.clientY;
     function move(ev) {
@@ -294,6 +371,8 @@ function createPanel(opts) {
   }
 
   function onKey(e) {
+    // 面板被頁面移除（例如 SPA 重新渲染）：一併停用快捷鍵，避免殘留的監聽器搶走新面板的按鍵
+    if (!d.documentElement.contains(root)) return detach();
     // 用 e.code 判斷實體按鍵：Mac 的 Option+Shift+數字會產生特殊字元，e.key 不可靠
     var m = /^Digit([1-9])$/.exec(e.code || '');
     if (!m || !e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey || editable(e.target)) return;
@@ -306,6 +385,14 @@ function createPanel(opts) {
     }
   }
   w.addEventListener('keydown', onKey, true);
+  w.addEventListener('resize', keepInView);
+
+  function detach() {
+    w.removeEventListener('keydown', onKey, true);
+    w.removeEventListener('resize', keepInView);
+    clearTimeout(watchdog);
+    stopAnims();
+  }
 
   // ---------- 最小化／關閉 ----------
   minBtn.addEventListener('click', function () {
@@ -317,8 +404,7 @@ function createPanel(opts) {
 
   function close() {
     if (busy) return;
-    w.removeEventListener('keydown', onKey, true);
-    stopAnims();
+    detach();
     if (root.parentNode) root.parentNode.removeChild(root);
   }
   closeBtn.addEventListener('click', close);
@@ -329,8 +415,12 @@ function createPanel(opts) {
   var api = {
     expand: function () {
       if (minimized()) setMinimized(false);
+      else keepInView();
     },
-    close: close
+    close: close,
+    busy: function () {
+      return !!busy;
+    }
   };
   root.__bmtPanel = api;
   return api;
