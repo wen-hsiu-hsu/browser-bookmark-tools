@@ -197,7 +197,7 @@ Frontend Masters Learning Mode 專用：`toMd(el)` 把元素轉成 Markdown。
 
 ## panel
 
-`createPanel(opts) → api`：浮動指令面板，會自動 include `toast`（及 `theme`）。使用者：`fm-tools`。
+`createPanel(opts) → api`：浮動指令面板，會自動 include `toast`（及 `theme`）。使用者：`fm-tools`、`lcs-tools`。
 
 ### 參數
 | 欄位 | 說明 |
