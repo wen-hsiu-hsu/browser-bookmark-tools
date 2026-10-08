@@ -155,7 +155,7 @@ async function run(cards, opts, clipboardOk) {
   res.again = function () { win.eval(CODE); };
   res.toast = function () {
     var el = d.getElementById('__bmt_toast__');
-    return el && { text: el.textContent, bg: el.style.background };
+    return el && { text: el.textContent, type: el.getAttribute('data-__bmt_type') };
   };
   res.done = async function (ms) {
     tick(ms || 60000);
@@ -176,24 +176,24 @@ var EXPECTED =
   '### What does this log?\n```javascript\nconsole.log(1);\n```\n\n1\n\n' +
   '### Last question?\n\nLast answer.';
 
-var GREEN = 'rgb(22, 163, 74)';
-var RED = 'rgb(220, 38, 38)';
-var BLUE = 'rgb(37, 99, 235)';
+var GREEN = 'success';
+var RED = 'error';
+var BLUE = 'info';
 
 test(T.label + '從中間開始：先回到第一張，再依序擷取全部卡片並一次複製', async function () {
   var r = await run(DECK, { start: 2 });
-  assert.deepStrictEqual(r.toast(), { text: '回到第一張…', bg: BLUE });
+  assert.deepStrictEqual(r.toast(), { text: '回到第一張…', type: BLUE });
   await r.done();
   assert.deepStrictEqual(r.copied, [EXPECTED]);
-  assert.deepStrictEqual(r.toast(), { text: '已複製 4 題', bg: GREEN });
+  assert.deepStrictEqual(r.toast(), { text: '已複製 4 題', type: GREEN });
   assert.strictEqual(r.win.document.documentElement.hasAttribute('data-__bmt_fm_batch'), false);
 });
 
 test(T.label + '擷取過程中顯示進度', async function () {
   var r = await run(DECK);
-  assert.deepStrictEqual(r.toast(), { text: '複製中… 第 1 張', bg: BLUE });
+  assert.deepStrictEqual(r.toast(), { text: '複製中… 第 1 張', type: BLUE });
   r.tick(450);
-  assert.deepStrictEqual(r.toast(), { text: '複製中… 第 2 張', bg: BLUE });
+  assert.deepStrictEqual(r.toast(), { text: '複製中… 第 2 張', type: BLUE });
 });
 
 test(T.label + '最後一張的 Next 被移除也能正常結束', async function () {
@@ -248,14 +248,14 @@ test(T.label + '複製失敗 → 顯示「點此複製」按鈕，點擊後複�
   await flush();
   assert.strictEqual(r.copied[r.copied.length - 1], 'OK:' + EXPECTED);
   assert.strictEqual(d.getElementById('__bmt_copy_btn__'), null);
-  assert.deepStrictEqual(r.toast(), { text: '已複製 4 題', bg: GREEN });
+  assert.deepStrictEqual(r.toast(), { text: '已複製 4 題', type: GREEN });
 });
 
 test(T.label + 'Previous 點了沒反應 → 無法回到第一張', async function () {
   var r = await run(DECK, { start: 1, prevBroken: true });
   await r.done(3500);
   assert.deepStrictEqual(r.copied, []);
-  assert.deepStrictEqual(r.toast(), { text: '無法回到第一張', bg: RED });
+  assert.deepStrictEqual(r.toast(), { text: '無法回到第一張', type: RED });
   assert.strictEqual(r.win.document.documentElement.hasAttribute('data-__bmt_fm_batch'), false);
 });
 
@@ -264,7 +264,7 @@ test(T.label + '執行中再點一次 → 提示執行中，不重跑', async fu
   r.tick(100);
   r.again();
   // fm-tools：執行中按鈕是 disabled，再點不會有反應，進度 toast 維持不變
-  assert.deepStrictEqual(r.toast(), { text: T.tools ? '複製中… 第 1 張' : '批次複製執行中', bg: BLUE });
+  assert.deepStrictEqual(r.toast(), { text: T.tools ? '複製中… 第 1 張' : '批次複製執行中', type: BLUE });
   await r.done();
   assert.deepStrictEqual(r.copied, [EXPECTED]);
 });
@@ -275,7 +275,7 @@ test(T.label + '沒有 flashcard → 找不到 flashcard 內容', async function
   win.eval(CODE);
   var el = win.document.getElementById('__bmt_toast__');
   assert.strictEqual(el.textContent, '找不到 flashcard 內容');
-  assert.strictEqual(el.style.background, RED);
+  assert.strictEqual(el.getAttribute('data-__bmt_type'), RED);
 });
 
 test(T.label + 'Next 進到非 flashcard 步驟（例如 Quiz）→ 視為結束，不計入略過', async function () {
@@ -313,7 +313,7 @@ test(T.label + '點按鈕後複製仍失敗 → 保留按鈕可再試', async fu
   btn.click();
   await flush();
   assert.strictEqual(r.win.document.getElementById('__bmt_copy_btn__'), btn);
-  assert.deepStrictEqual(r.toast(), { text: '複製失敗', bg: RED });
+  assert.deepStrictEqual(r.toast(), { text: '複製失敗', type: RED });
 });
 
 test(T.label + '等待換卡期間持續更新執行中標記，不會被誤判為已結束', async function () {

@@ -26,12 +26,13 @@ function createPanel(opts) {
   var d = document;
   var w = window;
   var SVG = 'http://www.w3.org/2000/svg';
-  var ACCENT = '#7cb7ff';
-  var BG = '#1c1f24';
-  var FG = '#e6e8eb';
-  var MUTED = '#8b929c';
-  var FONT = '14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
-  var SHADOW = '0 8px 24px rgba(0,0,0,.28)';
+  var T = bmtTheme();
+  var ACCENT = T.accent;
+  var BG = T.bg;
+  var FG = T.fg;
+  var MUTED = T.muted;
+  var FONT = T.font;
+  var SHADOW = T.shadow;
   var GRIP = [['circle', { cx: 9, cy: 6, r: 1.6 }], ['circle', { cx: 15, cy: 6, r: 1.6 }],
     ['circle', { cx: 9, cy: 12, r: 1.6 }], ['circle', { cx: 15, cy: 12, r: 1.6 }],
     ['circle', { cx: 9, cy: 18, r: 1.6 }], ['circle', { cx: 15, cy: 18, r: 1.6 }]];
@@ -40,7 +41,7 @@ function createPanel(opts) {
   var CROSS = [['path', { d: 'M6 6l12 12M18 6L6 18' }]];
   var EXPAND = [['path', { d: 'M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6' }]];
   var SHRINK = [['path', { d: 'M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7' }]];
-  var ICON_FG = '#fff'; // 標題列、縮小欄、膠囊上的控制鈕 icon
+  var ICON_FG = FG; // 標題列、縮小欄、膠囊上的控制鈕 icon
 
   var IDLE_MS = 15000;
   var busy = null; // 執行中的指令
@@ -48,46 +49,25 @@ function createPanel(opts) {
   var watchdog = null;
 
   /**
-   * 建立元素；css 開頭一律 all:initial，隔離頁面樣式。
+   * 建立元素；css 開頭一律 all:initial 並加 !important，隔離頁面樣式（之後一律用 bmtSet 修改）。
    * all:initial 會把 cursor 重設成 auto（文字上變成 text 游標），所以預設繼承父層。
    */
   function el(tag, css, text) {
     var e = d.createElement(tag);
-    e.style.cssText = 'all:initial;box-sizing:border-box;font:' + FONT + ';color:inherit;cursor:inherit;' + (css || '');
+    bmtCss(e, 'font:' + FONT + ';color:inherit;cursor:inherit;' + (css || ''));
     if (text) e.textContent = text;
     return e;
   }
 
   /** 線條 SVG icon；fill 傳 true 時改為實心（拖曳點）。 */
   function icon(shapes, size, color, fill) {
-    var s = d.createElementNS(SVG, 'svg');
-    s.setAttribute('width', size);
-    s.setAttribute('height', size);
-    s.setAttribute('viewBox', '0 0 24 24');
-    s.setAttribute('aria-hidden', 'true');
-    s.setAttribute('fill', fill ? color : 'none');
-    s.setAttribute('stroke', fill ? 'none' : color);
-    s.setAttribute('stroke-width', '2');
-    s.setAttribute('stroke-linecap', 'round');
-    s.setAttribute('stroke-linejoin', 'round');
-    // inline 樣式蓋過頁面 CSS（例如 svg{width:100%}、svg{fill:currentColor}）；presentation attribute 優先權最低。
-    // all:initial 會把 color 重設成黑色，所以顏色一律直接傳入，不用 currentColor
-    s.style.cssText = 'all:initial;cursor:inherit;display:block;flex:none;overflow:visible;width:' + size + 'px;height:' + size +
-      'px;fill:' + (fill ? color : 'none') + ';stroke:' + (fill ? 'none' : color) + ';stroke-width:2px;' +
-      'stroke-linecap:round;stroke-linejoin:round';
-    for (var i = 0; i < shapes.length; i++) {
-      var c = d.createElementNS(SVG, shapes[i][0]);
-      for (var k in shapes[i][1]) c.setAttribute(k, shapes[i][1][k]);
-      c.style.cssText = 'fill:inherit;stroke:inherit;cursor:inherit';
-      s.appendChild(c);
-    }
-    return s;
+    return bmtIcon(shapes, size, color, fill);
   }
 
   /** Web Animations：不支援時（舊瀏覽器、jsdom）就不動畫，狀態仍正確。 */
   function animate(node, frames, ms) {
-    if (!node.animate) return;
-    anims.push(node.animate(frames, { duration: ms, iterations: Infinity }));
+    var a = bmtAnimate(node, frames, ms);
+    if (a) anims.push(a);
   }
 
   function stopAnims() {
@@ -97,7 +77,7 @@ function createPanel(opts) {
 
   function spinner(size) {
     var s = icon(SPIN, size, ACCENT);
-    animate(s, [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], 900);
+    animate(s, [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], T.spin);
     return s;
   }
 
@@ -113,7 +93,7 @@ function createPanel(opts) {
 
   /** 按鈕平常的底色：執行中的指令按鈕（展開與縮小模式各一顆）維持反白。 */
   function restBg(b) {
-    return busy && (busy.ui.btn === b || busy.ui.cbtn === b) ? 'rgba(255,255,255,.07)' : 'transparent';
+    return busy && (busy.ui.btn === b || busy.ui.cbtn === b) ? T.hover : 'transparent';
   }
 
   /**
@@ -122,27 +102,27 @@ function createPanel(opts) {
    */
   function hover(b, bg) {
     b.addEventListener('mouseenter', function () {
-      if (!b.disabled) b.style.background = bg;
+      if (!b.disabled) bmtSet(b, 'background', bg);
     });
     b.addEventListener('mouseleave', function () {
-      b.style.background = restBg(b);
+      bmtSet(b, 'background', restBg(b));
     });
     b.addEventListener('focus', function () {
       // 滑鼠點擊也會觸發 focus：支援 :focus-visible 時只在鍵盤焦點顯示外框
       try {
         if (!b.matches(':focus-visible')) return;
       } catch (e) {}
-      b.style.outline = '2px solid ' + ACCENT;
-      b.style.outlineOffset = '-2px';
+      bmtSet(b, 'outline', T.focusRing);
+      bmtSet(b, 'outline-offset', '-2px');
     });
     b.addEventListener('blur', function () {
-      b.style.outline = 'none';
+      bmtSet(b, 'outline', 'none');
     });
   }
 
   // ---------- DOM ----------
   // 以右上角定位（right／top）：切換大小時右上角不動，最小化鈕附近的視線不會落空
-  var root = el('div', 'position:fixed;right:16px;top:16px;z-index:2147483646;color:' + FG + ';' +
+  var root = el('div', 'position:fixed;right:16px;top:16px;z-index:' + T.zPanel + ';color:' + FG + ';' +
     'cursor:default;user-select:none;-webkit-user-select:none');
   root.id = opts.id;
   root.setAttribute('role', 'region');
@@ -153,7 +133,7 @@ function createPanel(opts) {
   var full = el('div', 'display:block;width:264px;background:' + BG + ';border-radius:10px;overflow:hidden;' +
     'box-shadow:' + SHADOW);
   var head = el('div', 'display:flex;align-items:center;gap:8px;padding:8px 8px 8px 12px;cursor:move;' +
-    'border-bottom:1px solid rgba(255,255,255,.08)');
+    'border-bottom:1px solid ' + T.border);
   var headGrip = icon(GRIP, 14, MUTED, true);
   var title = el('div', 'flex-grow:1;font-weight:600;font-size:13px', opts.title);
   var shrinkBtn = iconButton(SHRINK, '縮小');
@@ -164,7 +144,7 @@ function createPanel(opts) {
   head.appendChild(shrinkBtn);
   head.appendChild(minBtn);
   head.appendChild(closeBtn);
-  var track = el('div', 'display:none;height:3px;background:rgba(255,255,255,.08);overflow:hidden');
+  var track = el('div', 'display:none;height:3px;background:' + T.border + ';overflow:hidden');
   var bar = el('div', 'display:block;width:40%;height:3px;background:' + ACCENT);
   track.appendChild(bar);
   var list = el('div', 'display:flex;flex-direction:column;padding:6px');
@@ -183,7 +163,7 @@ function createPanel(opts) {
   var miniLabel = el('span', 'font-weight:600;font-size:13px;padding:0 6px', opts.mini);
   var miniProg = el('span', 'display:none;font-size:12px;color:' + ACCENT + ';padding-right:4px');
   var restoreBtn = el('button', 'width:36px;height:36px;display:flex;align-items:center;justify-content:center;' +
-    'border-radius:18px;background:rgba(255,255,255,.08);cursor:pointer;flex:none');
+    'border-radius:18px;background:' + T.active + ';cursor:pointer;flex:none');
   restoreBtn.type = 'button';
   restoreBtn.setAttribute('aria-label', '還原');
   restoreBtn.title = '還原';
@@ -199,11 +179,11 @@ function createPanel(opts) {
   var cGrip = el('div', 'display:flex;justify-content:center;align-self:stretch;margin:0 -4px;padding:8px 0;cursor:move');
   cGrip.appendChild(icon(GRIP, 14, MUTED, true));
   var cTrack = el('div', 'display:none;align-self:stretch;margin:0 -4px 4px;height:3px;' +
-    'background:rgba(255,255,255,.08);overflow:hidden');
+    'background:' + T.border + ';overflow:hidden');
   var cBar = el('div', 'display:block;width:40%;height:3px;background:' + ACCENT);
   cTrack.appendChild(cBar);
   var cList = el('div', 'display:flex;flex-direction:column;align-items:center;gap:2px');
-  var cSep = el('div', 'display:block;width:24px;height:1px;margin:4px 0;background:rgba(255,255,255,.12)');
+  var cSep = el('div', 'display:block;width:24px;height:1px;margin:4px 0;background:' + T.borderStrong);
   var cExpandBtn = iconButton(EXPAND, '展開');
   var cMinBtn = iconButton(MINUS, '最小化');
   var cCloseBtn = iconButton(CROSS, '關閉');
@@ -233,14 +213,14 @@ function createPanel(opts) {
     var ic = el('span', 'display:flex;align-items:center;flex:none');
     ic.appendChild(icon(c.icon, 20, ACCENT));
     var label = el('span', 'flex-grow:1', c.label);
-    var kbd = el('kbd', 'font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#b4bac3;' +
-      'border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:4px 6px', '⌥⇧' + c.key);
+    var kbd = el('kbd', 'font:11px/1 ' + T.mono + ';color:' + T.kbd + ';' +
+      'border:1px solid ' + T.borderStrong + ';border-radius:4px;padding:4px 6px', '⌥⇧' + c.key);
     var prog = el('span', 'display:none;font-size:12px;color:' + ACCENT);
     b.appendChild(ic);
     b.appendChild(label);
     b.appendChild(kbd);
     b.appendChild(prog);
-    hover(b, 'rgba(255,255,255,.07)');
+    hover(b, T.hover);
     b.addEventListener('click', function () {
       run(c);
     });
@@ -254,7 +234,7 @@ function createPanel(opts) {
     var cic = el('span', 'display:flex;align-items:center;flex:none');
     cic.appendChild(icon(c.icon, 20, ACCENT));
     cb.appendChild(cic);
-    hover(cb, 'rgba(255,255,255,.07)');
+    hover(cb, T.hover);
     cb.addEventListener('click', function () {
       run(c);
     });
@@ -263,10 +243,10 @@ function createPanel(opts) {
     cList.appendChild(cb);
   }
   var ctrls = [shrinkBtn, minBtn, closeBtn, cExpandBtn, cMinBtn, cCloseBtn];
-  for (i = 0; i < ctrls.length; i++) hover(ctrls[i], 'rgba(255,255,255,.08)');
-  hover(restoreBtn, 'rgba(255,255,255,.16)');
+  for (i = 0; i < ctrls.length; i++) hover(ctrls[i], T.hover);
+  hover(restoreBtn, T.borderStrong);
   restoreBtn.addEventListener('mouseleave', function () {
-    restoreBtn.style.background = 'rgba(255,255,255,.08)';
+    bmtSet(restoreBtn, 'background', T.active);
   });
 
   // ---------- 狀態 ----------
@@ -282,14 +262,14 @@ function createPanel(opts) {
     mode = m;
     var focused = root.contains(d.activeElement);
     for (var i = 0; i < ctrls.length; i++) {
-      ctrls[i].style.background = 'transparent';
-      ctrls[i].style.outline = 'none';
+      bmtSet(ctrls[i], 'background', 'transparent');
+      bmtSet(ctrls[i], 'outline', 'none');
     }
-    restoreBtn.style.background = 'rgba(255,255,255,.08)';
-    restoreBtn.style.outline = 'none';
-    full.style.display = m === 'full' ? 'block' : 'none';
-    compact.style.display = m === 'compact' ? 'flex' : 'none';
-    mini.style.display = m === 'mini' ? 'flex' : 'none';
+    bmtSet(restoreBtn, 'background', T.active);
+    bmtSet(restoreBtn, 'outline', 'none');
+    bmtSet(full, 'display', m === 'full' ? 'block' : 'none');
+    bmtSet(compact, 'display', m === 'compact' ? 'flex' : 'none');
+    bmtSet(mini, 'display', m === 'mini' ? 'flex' : 'none');
     keepInView();
     if (focused) ({ full: shrinkBtn, compact: cExpandBtn, mini: restoreBtn })[m].focus();
   }
@@ -312,8 +292,8 @@ function createPanel(opts) {
     var v = viewport();
     var right = parseFloat(root.style.right) || 0;
     var top = parseFloat(root.style.top) || 0;
-    root.style.right = Math.min(Math.max(right, 0), Math.max(v.w - r.width, 0)) + 'px';
-    root.style.top = Math.min(Math.max(top, 0), Math.max(v.h - r.height, 0)) + 'px';
+    bmtSet(root, 'right', Math.min(Math.max(right, 0), Math.max(v.w - r.width, 0)) + 'px');
+    bmtSet(root, 'top', Math.min(Math.max(top, 0), Math.max(v.h - r.height, 0)) + 'px');
   }
 
   function cmdTitle(c) {
@@ -325,24 +305,24 @@ function createPanel(opts) {
     busy.ui.prog.textContent = text || '';
     busy.ui.cbtn.title = text ? busy.label + '：' + text : cmdTitle(busy);
     miniProg.textContent = text || '';
-    miniProg.style.display = text ? 'inline' : 'none';
+    bmtSet(miniProg, 'display', text ? 'inline' : 'none');
   }
 
   function setBusy(c) {
     busy = c;
     root.setAttribute('aria-busy', c ? 'true' : 'false');
     var ring = c ? '0 0 0 2px ' + ACCENT + ',' + SHADOW : SHADOW;
-    full.style.boxShadow = ring;
-    mini.style.boxShadow = ring;
-    compact.style.boxShadow = ring;
-    track.style.display = c ? 'block' : 'none';
-    cTrack.style.display = c ? 'block' : 'none';
+    bmtSet(full, 'box-shadow', ring);
+    bmtSet(mini, 'box-shadow', ring);
+    bmtSet(compact, 'box-shadow', ring);
+    bmtSet(track, 'display', c ? 'block' : 'none');
+    bmtSet(cTrack, 'display', c ? 'block' : 'none');
     for (var j = 0; j < closers.length; j++) {
       closers[j].disabled = !!c;
-      closers[j].style.opacity = c ? '.4' : '1';
-      closers[j].style.cursor = c ? 'default' : 'pointer';
-      closers[j].style.background = 'transparent';
-      closers[j].style.outline = 'none';
+      bmtSet(closers[j], 'opacity', c ? T.disabledOpacity : '1');
+      bmtSet(closers[j], 'cursor', c ? 'default' : 'pointer');
+      bmtSet(closers[j], 'background', 'transparent');
+      bmtSet(closers[j], 'outline', 'none');
     }
     stopAnims();
     for (var i = 0; i < cmds.length; i++) {
@@ -351,25 +331,25 @@ function createPanel(opts) {
       var btns = [u.btn, u.cbtn];
       for (j = 0; j < btns.length; j++) {
         // 停用的按鈕被瀏覽器移除焦點時不一定觸發 blur，外框會殘留
-        if (c) btns[j].style.outline = 'none';
+        if (c) bmtSet(btns[j], 'outline', 'none');
         btns[j].disabled = !!c;
-        btns[j].style.cursor = c ? 'default' : 'pointer';
-        btns[j].style.opacity = c && !me ? '.4' : '1';
-        btns[j].style.background = restBg(btns[j]);
+        bmtSet(btns[j], 'cursor', c ? 'default' : 'pointer');
+        bmtSet(btns[j], 'opacity', c && !me ? T.disabledOpacity : '1');
+        bmtSet(btns[j], 'background', restBg(btns[j]));
       }
       u.cbtn.title = cmdTitle(cmds[i]);
-      u.kbd.style.display = c ? 'none' : 'inline-block';
-      u.prog.style.display = me ? 'inline' : 'none';
+      bmtSet(u.kbd, 'display', c ? 'none' : 'inline-block');
+      bmtSet(u.prog, 'display', me ? 'inline' : 'none');
       u.prog.textContent = '';
       u.icon.replaceChild(me ? spinner(20) : icon(cmds[i].icon, 20, ACCENT), u.icon.firstChild);
       u.cicon.replaceChild(me ? spinner(20) : icon(cmds[i].icon, 20, ACCENT), u.cicon.firstChild);
     }
     miniIcon.replaceChild(c ? spinner(16) : miniGrip, miniIcon.firstChild);
-    miniProg.style.display = 'none';
+    bmtSet(miniProg, 'display', 'none');
     miniProg.textContent = '';
     if (c) {
-      animate(bar, [{ transform: 'translateX(-100%)' }, { transform: 'translateX(260%)' }], 1200);
-      animate(cBar, [{ transform: 'translateX(-100%)' }, { transform: 'translateX(260%)' }], 1200);
+      animate(bar, [{ transform: 'translateX(-100%)' }, { transform: 'translateX(260%)' }], T.progress);
+      animate(cBar, [{ transform: 'translateX(-100%)' }, { transform: 'translateX(260%)' }], T.progress);
     }
   }
 
@@ -379,7 +359,7 @@ function createPanel(opts) {
    */
   function remindBusy() {
     var t = d.getElementById('__bmt_toast__');
-    var prev = t && t.style.opacity !== '0' && t.style.background === 'rgb(37, 99, 235)' ? t.textContent : null;
+    var prev = t && t.style.opacity !== '0' && t.getAttribute('data-__bmt_type') === 'info' ? t.textContent : null;
     toast('指令執行中', 'info', 0);
     var cur = busy;
     setTimeout(function () {
@@ -440,8 +420,8 @@ function createPanel(opts) {
       if ('buttons' in ev && !(ev.buttons & 1)) return up(); // 在視窗外放開：收不到 mouseup
       var x = Math.min(Math.max(r.left + ev.clientX - sx, 0), Math.max(vw - r.width, 0));
       var y = Math.min(Math.max(r.top + ev.clientY - sy, 0), Math.max(vh - r.height, 0));
-      root.style.right = vw - x - r.width + 'px';
-      root.style.top = y + 'px';
+      bmtSet(root, 'right', vw - x - r.width + 'px');
+      bmtSet(root, 'top', y + 'px');
     }
     function up() {
       d.removeEventListener('mousemove', move, true);
@@ -510,7 +490,7 @@ function createPanel(opts) {
   foot.textContent = opts.footer || '';
   (d.body || d.documentElement).appendChild(root);
   // 第一次出現在右下角：量一次高度換算成 top（之後一律以右上角為準）
-  root.style.top = viewport().h - root.getBoundingClientRect().height - 16 + 'px';
+  bmtSet(root, 'top', viewport().h - root.getBoundingClientRect().height - 16 + 'px');
   keepInView();
 
   var api = {

@@ -1,6 +1,6 @@
 /**
  * @name    FM 逐字稿複製
- * @version 1.1.0
+ * @version 1.2.0
  * @desc    Frontend Masters 課程頁：把 Transcripts 面板的逐字稿整理成純文字並複製
  *
  * 建置：npm run build -- fm-transcript-copy

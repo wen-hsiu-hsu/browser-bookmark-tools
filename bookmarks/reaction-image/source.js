@@ -1,6 +1,6 @@
 /**
  * @name    反應圖
- * @version 1.1.0
+ * @version 1.2.0
  * @desc    在頁面角落顯示自訂的反應圖（可拖曳、滾輪縮放）；Alt+Shift+1~9 切換 9 張已設定的圖片
  *
  * 建置：npm run build -- reaction-image
@@ -10,6 +10,7 @@
  */
 (function () {
   /* @include toast */
+  /* @include theme */
 
   var d = document;
   var root = d.documentElement;
@@ -187,27 +188,34 @@
     );
   }
 
+  var T = bmtTheme();
+  // 疊在圖片上的按鈕：主題的半透明 scrim 底色
   var HOVER_BTN =
-    'all:initial;cursor:pointer;background:rgba(0,0,0,.6);color:#fff;border-radius:4px;' +
+    'all:initial;cursor:pointer;background:' + T.scrim + ';color:' + T.fg + ';border-radius:' + T.radiusSm + ';' +
     'font:12px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;';
 
-  /** 欄位提示列：1~9，有圖的數字為白色、沒圖的暗色、目前這張加框；點數字切換或設定。 */
+  /** 欄位數字的樣式：目前這張用實心 fill，有圖用 fg，沒圖用 muted。 */
+  function paintSlot(b, filled, cur) {
+    b.style.background = cur ? T.fill : 'transparent';
+    b.style.color = cur ? T.onFill : filled ? T.fg : T.muted;
+  }
+
+  /** 欄位提示列：1~9 合成一條膠囊；點數字切換或設定。 */
   function slotBar(slot) {
     var urls = load().urls;
     var bar = d.createElement('div');
     bar.style.cssText =
       'all:initial;display:none;position:absolute;bottom:6px;left:50%;transform:translateX(-50%);' +
-      'white-space:nowrap;line-height:0';
+      'gap:2px;padding:2px;white-space:nowrap;border-radius:8px;background:' + T.scrim;
     for (var i = 1; i <= 9; i++) {
       var b = d.createElement('button');
       b.type = 'button';
       b.textContent = i;
       b.setAttribute('data-slot', i);
       b.style.cssText =
-        HOVER_BTN +
-        'display:inline-block;width:18px;margin:0 1px;padding:2px 0;text-align:center;' +
-        'color:' + (typeof urls[i] === 'string' && urls[i] ? '#fff' : 'rgba(255,255,255,.35)') + ';' +
-        'box-shadow:' + (i === slot ? 'inset 0 0 0 1px #fff' : 'none');
+        'all:initial;cursor:pointer;display:block;width:20px;height:22px;text-align:center;border-radius:5px;' +
+        'font:12px/22px -apple-system,BlinkMacSystemFont,sans-serif';
+      paintSlot(b, typeof urls[i] === 'string' && !!urls[i], i === slot);
       b.onclick = function (e) {
         e.stopPropagation();
         var n = +this.getAttribute('data-slot');
@@ -230,13 +238,13 @@
     box.id = ID;
     box.setAttribute('data-slot', slot);
     box.style.cssText =
-      'all:initial;display:block;position:fixed;right:20px;bottom:20px;z-index:2147483646;' +
+      'all:initial;display:block;position:fixed;right:20px;bottom:20px;z-index:' + T.zPanel + ';' +
       'line-height:0;cursor:move;opacity:0;transition:opacity .2s';
     var img = d.createElement('img');
     img.alt = '';
     img.draggable = false; // 關閉瀏覽器原生的圖片拖曳（會拖出半透明預覽圖）
     img.style.cssText =
-      'all:initial;display:block;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.2)';
+      'all:initial;display:block;border-radius:' + T.radiusSm + ';box-shadow:' + T.shadow;
     var btn = d.createElement('button');
     btn.type = 'button';
     btn.textContent = '更換';
@@ -248,7 +256,8 @@
 
     function hover(on) {
       box.__bmtHover = on;
-      btn.style.display = bar.style.display = on ? 'block' : 'none';
+      btn.style.display = on ? 'block' : 'none';
+      bar.style.display = on ? 'flex' : 'none';
     }
     box.onmouseenter = function () {
       hover(true);
@@ -274,7 +283,6 @@
     img.onload = function () {
       if (box !== current()) return;
       remember(slot, url);
-      bar.children[slot - 1].style.color = '#fff'; // 剛設定的欄位也標成有圖
       applyView(box, img); // 知道原始尺寸後套用明確寬高並重新確認位置
       box.style.opacity = '1';
     };

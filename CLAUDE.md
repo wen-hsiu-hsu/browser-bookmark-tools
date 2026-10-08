@@ -11,7 +11,7 @@
 2. **規劃做法**：把規劃提給使用者，確認後才能實作。
 3. **實作**：撰寫可讀的 `source.js`，並用 jsdom 補上測試。
 4. **Code review**：實作完成後，用 subagent 做 code review，並修正問題。
-5. **更新文件**：包括書籤的 `README.md`（版本紀錄）、根目錄 `README.md` 的書籤清單，以及規格有變動時的 `shared/README.md`。
+5. **更新文件**：包括書籤的 `README.md`（版本紀錄）、根目錄 `README.md` 的書籤清單，以及規格有變動時的 `shared/README.md`。新增或修改 design token 時，也要更新 `shared/README.md` 的 theme 章節。
 6. **最後才建置**：確認開發完成後，才執行 `npm run build -- <name>` 產生 `bookmarklet.txt`。開發中不要產生，以節省 token。
 
 回覆使用繁體中文，保持精簡。
@@ -24,8 +24,8 @@ bookmarks/<name>/     每個書籤一個資料夾（名稱用 kebab-case）
   source.js           可讀原始碼（ES5 IIFE，開頭註明 @name、@version）
   bookmarklet.txt     建置產物：一行 javascript: 網址，使用者直接複製
 bookmarks/_template/  新書籤範本（複製後改名使用）
-shared/               共用元件，規格見 shared/README.md
-scripts/build.js      展開 @include → 驗證 ES5（acorn）→ Terser → 結尾加 void 0 → 將 % 跳脫成 %25
+shared/               共用元件（含 theme.js design tokens），規格見 shared/README.md
+scripts/build.js      展開 @include → 驗證 ES5（acorn）→ Terser → 結尾加 void 0 → 將 % 跳脫成 %25；另外對寫死的色值發出警告
 test/                 node:test + jsdom
 ```
 
@@ -35,6 +35,7 @@ test/                 node:test + jsdom
 - 整支書籤包在 IIFE 內，`@include` 也寫在 IIFE 內部，不要建立全域變數。
 - 書籤結尾不需要自己加 `void 0`，建置時會自動加上。原因是 Terser 可能拆掉 IIFE，最後的值若變成字串，瀏覽器會用它取代整個頁面。
 - 注入頁面的 id／class／屬性一律使用 `__bmt_` 前綴。
+- **設計系統**：注入頁面的 UI 一律 `@include theme`，顏色、圓角、陰影、字型、z-index、動畫時間都從 `bmtTheme()` 的 tokens 取，不寫死。樣式用 `bmtCss()` 設定、`bmtSet()` 修改，動畫用 `bmtAnimate()`。遇到 tokens 沒有涵蓋的設計元素時，先依 `shared/README.md`〈新增 token 的流程〉在 `shared/theme.js` 新增 token（亮、暗兩個值）並更新文件，再使用。畫筆顏色這類「內容色」可以寫死，但該行要加 `/* @design-literal */`。建置時會對寫死的色值發出警告。
 - **toast 回饋**：完成（成功、失敗、錯誤）時都要顯示 toast；有等待或讀秒時，用 `toast(msg, 'info', 0)` 持續更新文字。訊息使用繁體中文。
 - **複製**：一律使用共用的 `copyText()`，它會先試 clipboard API，失敗再 fallback 到 `execCommand('copy')`。
 - 字串中不要放控制字元（例如 `'\u0001'`）：Terser 會原樣輸出，複製貼上到書籤時可能被吃掉。建置時會檢查，遇到就失敗。

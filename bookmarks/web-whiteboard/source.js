@@ -1,12 +1,13 @@
 /**
  * @name    網頁白板
- * @version 1.0.0
+ * @version 1.1.0
  * @desc    在任何網頁上疊一層透明白板：手繪筆畫 + 便利貼，關閉即消失
  *
  * 建置：npm run build -- web-whiteboard
  */
 (function () {
   /* @include toast */
+  /* @include theme */
 
   var d = document;
   var w = window;
@@ -25,14 +26,16 @@
   }
 
   // ---------- 常數 ----------
-  var Z = 2147483000; // 低於 toast 的 2147483647
+  var T = bmtTheme();
+  var Z = T.zWhiteboard; // 低於面板與 toast
+  // 畫筆與便利貼的顏色屬於內容，不跟主題變（@design-literal 讓建置檢查略過）
   var COLORS = [
-    ['#000000', '黑'],
-    ['#ffffff', '白'],
-    ['#dc2626', '紅'],
-    ['#2563eb', '藍'],
-    ['#16a34a', '綠'],
-    ['#ca8a04', '黃']
+    ['#000000', '黑'], /* @design-literal */
+    ['#ffffff', '白'], /* @design-literal */
+    ['#dc2626', '紅'], /* @design-literal */
+    ['#2563eb', '藍'], /* @design-literal */
+    ['#16a34a', '綠'], /* @design-literal */
+    ['#ca8a04', '黃'] /* @design-literal */
   ];
   var WIDTHS = [
     [2, '細'],
@@ -46,9 +49,6 @@
   var ERASE_TOLERANCE = 6;
   var CURSORS = { pen: 'crosshair', eraser: 'cell', note: 'copy' };
   var FONT = '13px/1.4 -apple-system,BlinkMacSystemFont,sans-serif';
-  var BTN_BG = '#3f3f46';
-  var BTN_HOVER = '#52525b';
-  var BTN_ON = '#2563eb';
 
   // 線條風格圖示（viewBox 24×24），每個元素是一段 path 的 d
   var NS = 'http://www.w3.org/2000/svg';
@@ -113,18 +113,9 @@
     return { x: e.clientX + scrollX(), y: e.clientY + scrollY() };
   }
 
-  /**
-   * 以 all:initial 隔離頁面 CSS，再套上指定樣式。
-   * 每條都加 !important：inline 樣式會輸給頁面樣式表裡的 !important（例如 button{background:red!important}）。
-   */
-  function css(el, text) {
-    el.style.cssText = ('all:initial;box-sizing:border-box;' + text).replace(/;/g, '!important;') + '!important';
-  }
-
-  /** 事後修改單一樣式（同樣加 !important）。 */
-  function setStyle(el, prop, value) {
-    el.style.setProperty(prop, value, 'important');
-  }
+  // 以 all:initial 隔離頁面 CSS，每條樣式都加 !important（見 shared/theme.js）
+  var css = bmtCss;
+  var setStyle = bmtSet;
 
   function el(tag, text, cls) {
     var e = d.createElement(tag);
@@ -420,7 +411,7 @@
     var box = el(
       'div',
       'position:absolute;display:flex;flex-direction:column;pointer-events:auto;overflow:hidden;' +
-        'border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.25);font:' + FONT + ';color:#000',
+        'border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.25);font:' + FONT + ';color:#000', /* @design-literal */
       'note'
     );
     function place() {
@@ -435,13 +426,13 @@
     var hdr = el(
       'div',
       'display:flex;justify-content:flex-end;align-items:center;flex:0 0 auto;height:20px;' +
-        'cursor:move;background:rgba(0,0,0,.15)',
+        'cursor:move;background:rgba(0,0,0,.15)', /* @design-literal */
       'note_hdr'
     );
     var del = el(
       'button',
       'display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;' +
-        'border:none;background:transparent;color:#000;cursor:pointer',
+        'border:none;background:transparent;color:#000;cursor:pointer', /* @design-literal */
       'note_close'
     );
     del.type = 'button';
@@ -453,7 +444,7 @@
     var body = el(
       'textarea',
       'display:block;flex:1 1 auto;min-height:0;width:100%;padding:6px 6px 14px;border:none;outline:none;' +
-        'resize:none;background:transparent;color:#000;font:' + FONT + ';white-space:pre-wrap;' +
+        'resize:none;background:transparent;color:#000;font:' + FONT + ';white-space:pre-wrap;' + /* @design-literal */
         'overflow-wrap:break-word;overflow:auto;cursor:text',
       'note_body'
     );
@@ -463,7 +454,7 @@
     var grip = el(
       'div',
       'position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;' +
-        'background:linear-gradient(135deg,transparent 50%,rgba(0,0,0,.35) 50%)',
+        'background:linear-gradient(135deg,transparent 50%,rgba(0,0,0,.35) 50%)', /* @design-literal */
       'note_resize'
     );
     grip.title = '拖曳調整大小';
@@ -526,7 +517,7 @@
       y: pt.y,
       w: NOTE_W,
       h: NOTE_H,
-      color: state.color === '#000000' ? '#ffffff' : state.color, // 黑底看不到黑字，改用白色
+      color: state.color === '#000000' ? '#ffffff' : state.color, /* @design-literal */ // 黑底看不到黑字，改用白色
       text: ''
     };
     state.notes.push(note);
@@ -618,16 +609,16 @@
   var bar = el(
     'div',
     'position:fixed;z-index:' + Z + ';display:flex;align-items:center;gap:6px;padding:8px;' +
-      'background:rgba(30,30,30,.92);color:#fff;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.3);' +
-      'font:' + FONT + ';pointer-events:auto'
+      'background:' + T.bg + ';color:' + T.fg + ';border-radius:' + T.radiusMd + ';box-shadow:' + T.shadow + ';' +
+      'font:' + T.font + ';pointer-events:auto'
   );
   bar.id = P + 'toolbar__';
 
   var bubble = el(
     'button',
     'position:fixed;z-index:' + Z + ';display:none;align-items:center;justify-content:center;' +
-      'width:40px;height:40px;padding:0;border:none;border-radius:50%;background:rgba(30,30,30,.92);' +
-      'color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.3);pointer-events:auto'
+      'width:40px;height:40px;padding:0;border:none;border-radius:50%;background:' + T.bg + ';' +
+      'color:' + T.fg + ';cursor:pointer;box-shadow:' + T.shadow + ';pointer-events:auto'
   );
   bubble.id = P + 'bubble__';
   bubble.type = 'button';
@@ -637,8 +628,10 @@
 
   var seps = [];
 
+  /** 平常透明、hover 用 hover 色、選取中用實心 fill（與面板指令鈕一致）。 */
   function paintButton(b, hover) {
-    setStyle(b, 'background', b.__bmtOn ? BTN_ON : hover ? BTN_HOVER : BTN_BG);
+    setStyle(b, 'background', b.__bmtOn ? T.fill : hover ? T.hover : 'transparent');
+    setStyle(b, 'color', b.__bmtOn ? T.onFill : T.fg);
   }
 
   function setOn(b, on) {
@@ -650,7 +643,7 @@
     var b = el(
       'button',
       'display:flex;align-items:center;justify-content:center;flex:0 0 auto;width:32px;height:32px;' +
-        'padding:0;margin:0;border:none;border-radius:6px;color:#fff;cursor:pointer;background:' + BTN_BG
+        'padding:0;margin:0;border:none;border-radius:' + T.radiusSm + ';color:' + T.fg + ';cursor:pointer;background:transparent'
     );
     b.type = 'button';
     b.title = title;
@@ -668,7 +661,7 @@
   }
 
   function sep() {
-    var s = el('div', 'flex:0 0 auto;background:rgba(255,255,255,.2)');
+    var s = el('div', 'flex:0 0 auto;background:' + T.borderStrong);
     seps.push(s);
     bar.appendChild(s);
   }
@@ -677,7 +670,7 @@
   var grip = el(
     'div',
     'display:flex;align-items:center;justify-content:center;flex:0 0 auto;width:20px;height:32px;' +
-      'color:rgba(255,255,255,.6);cursor:grab'
+      'color:' + T.muted + ';cursor:grab'
   );
   grip.title = '拖曳以移動工具列';
   grip.setAttribute('aria-label', '移動工具列');
@@ -767,8 +760,9 @@
   function updateColorUI() {
     for (var i = 0; i < swatches.length; i++) {
       var on = COLORS[i][0] === state.color;
-      setStyle(swatches[i], 'border', '2px solid ' + (on ? '#fff' : 'rgba(255,255,255,.25)'));
-      setStyle(swatches[i], 'box-shadow', on ? '0 0 0 2px #2563eb' : 'none');
+      // 內框讓黑色（暗色主題）、白色（亮色主題）色票也看得出邊緣；選取中再加「底色間隙＋強調色」雙環
+      var edge = 'inset 0 0 0 1px ' + T.borderStrong;
+      setStyle(swatches[i], 'box-shadow', on ? edge + ',0 0 0 2px ' + T.bg + ',0 0 0 4px ' + T.accent : edge);
     }
   }
 

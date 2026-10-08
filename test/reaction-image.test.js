@@ -399,7 +399,7 @@ test('從提示列換圖：游標還在原處，新圖直接顯示提示列', as
   var p = await setup({ storage: TWO });
   p.box().dispatchEvent(new p.win.Event('mouseenter'));
   bar(p)[1].click();
-  assert.strictEqual(bar(p)[0].parentNode.style.display, 'block');
+  assert.strictEqual(bar(p)[0].parentNode.style.display, 'flex');
 });
 
 test('空欄位設定網址並載入成功後，提示列上該數字變亮', async function () {
@@ -421,18 +421,18 @@ function bar(p) {
   return p.box().querySelectorAll('button[data-slot]');
 }
 
-test('欄位提示列：滑鼠移入才出現，有圖的數字較亮，目前這張加框', async function () {
+test('欄位提示列：滑鼠移入才出現，有圖的數字用 fg、沒圖用 muted，目前這張用實心 fill', async function () {
   var p = await setup({ storage: { urls: { 1: 'https://img/a.gif', 3: 'https://img/c.gif' }, last: 3 } });
   var btns = bar(p);
   assert.strictEqual(btns.length, 9);
   assert.strictEqual(btns[0].parentNode.style.display, 'none');
   p.box().dispatchEvent(new p.win.Event('mouseenter'));
-  assert.strictEqual(btns[0].parentNode.style.display, 'block');
-  assert.strictEqual(btns[0].style.color, 'rgb(255, 255, 255)'); // 1 有圖
-  assert.notStrictEqual(btns[1].style.color, 'rgb(255, 255, 255)'); // 2 沒圖
-  assert.strictEqual(btns[2].style.color, 'rgb(255, 255, 255)'); // 3 有圖
-  assert.ok(btns[2].style.boxShadow.indexOf('inset') >= 0); // 3 是目前這張
-  assert.strictEqual(btns[0].style.boxShadow, 'none');
+  assert.strictEqual(btns[0].parentNode.style.display, 'flex');
+  assert.strictEqual(btns[0].style.color, 'rgb(230, 232, 235)'); // 1 有圖：暗色 fg
+  assert.strictEqual(btns[1].style.color, 'rgb(139, 146, 156)'); // 2 沒圖：暗色 muted
+  assert.strictEqual(btns[2].style.background, 'rgb(37, 99, 235)'); // 3 是目前這張：fill
+  assert.strictEqual(btns[2].style.color, 'rgb(255, 255, 255)');
+  assert.strictEqual(btns[0].style.background, 'transparent');
 });
 
 test('點提示列的數字：有圖 → 切換；沒圖 → 詢問網址；都不會關閉', async function () {

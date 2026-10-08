@@ -34,7 +34,7 @@ test('移除導覽列並將播放器 top 設為 0px（!important）', async func
   assert.strictEqual(p.style.top, '0px');
   assert.strictEqual(p.style.getPropertyPriority('top'), 'important');
   assert.strictEqual(toastText(win), '移除 sticky-nav ×2・播放器 top → 0px');
-  assert.strictEqual(d.getElementById('__bmt_toast__').style.background, 'rgb(22, 163, 74)');
+  assert.strictEqual(d.getElementById('__bmt_toast__').getAttribute('data-__bmt_type'), 'success');
 });
 
 test('只有 v2-section 或只有 sticky-nav 的元素不會被刪', async function () {
@@ -58,13 +58,13 @@ test('id 與 class 同時存在時以 id 為準', async function () {
 test('只有導覽列時只回報移除（仍為 success）', async function () {
   var win = await run(NAV);
   assert.strictEqual(toastText(win), '移除 sticky-nav ×1');
-  assert.strictEqual(win.document.getElementById('__bmt_toast__').style.background, 'rgb(22, 163, 74)');
+  assert.strictEqual(win.document.getElementById('__bmt_toast__').getAttribute('data-__bmt_type'), 'success');
 });
 
 test('兩者都找不到 → error', async function () {
   var win = await run('<p>other</p>');
   assert.strictEqual(toastText(win), '找不到目標元素');
-  assert.strictEqual(win.document.getElementById('__bmt_toast__').style.background, 'rgb(220, 38, 38)');
+  assert.strictEqual(win.document.getElementById('__bmt_toast__').getAttribute('data-__bmt_type'), 'error');
 });
 
 test('重複執行：第二次只重設播放器', async function () {

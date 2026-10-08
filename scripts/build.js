@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * 書籤建置：展開 @include → Terser 最小化（ES5）→ 產生可直接貼上的 javascript: 網址。
+ * 另外檢查寫死的色值（警告，不中斷建置）與 README 版本紀錄。
  *
  * 用法：npm run build -- <書籤資料夾名> [<書籤資料夾名> ...]
  * 輸出：bookmarks/<name>/bookmarklet.txt
@@ -32,6 +33,40 @@ function expandIncludes(src, seen) {
     if (!fs.existsSync(file)) throw new Error('找不到共用元件：shared/' + name + '.js');
     return expandIncludes(fs.readFileSync(file, 'utf8'), seen);
   });
+}
+
+// 寫死的色值：#rgb／#rgba／#rrggbb／#rrggbbaa、rgb(、rgba(（前面不能是英數字或 &，排除 HTML 實體）
+var COLOR_RE = /(?:^|[^\w&])#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b|\brgba?\(/;
+// 色值由 tokens 提供；以下檔案不檢查
+var COLOR_EXEMPT = { theme: true };
+
+/**
+ * 找出寫死的色值（UI 應改用 shared/theme.js 的 tokens）。
+ * 略過註解行，以及標了 @design-literal 的行（畫筆顏色等「內容色」）。
+ * @return {Array<{file: string, line: number, text: string}>}
+ */
+function findColorLiterals(file, src) {
+  var out = [];
+  var lines = src.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    var t = lines[i].replace(/^\s+/, '');
+    if (/^(\/\/|\/\*|\*)/.test(t) || lines[i].indexOf('@design-literal') >= 0) continue;
+    if (COLOR_RE.test(lines[i])) out.push({ file: file, line: i + 1, text: t });
+  }
+  return out;
+}
+
+/** 書籤本身與它 include 的 shared 元件（theme 除外）中寫死的色值。 */
+function colorWarnings(name, src) {
+  var seen = {};
+  expandIncludes(src, seen);
+  var out = findColorLiterals('bookmarks/' + name + '/source.js', src);
+  Object.keys(seen).forEach(function (n) {
+    if (COLOR_EXEMPT[n]) return;
+    var f = 'shared/' + n + '.js';
+    out = out.concat(findColorLiterals(f, fs.readFileSync(path.join(ROOT, f), 'utf8')));
+  });
+  return out;
 }
 
 /** 讀取原始碼開頭註解的 @tag 值。 */
@@ -76,6 +111,11 @@ async function build(name) {
   fs.writeFileSync(path.join(dir, 'bookmarklet.txt'), out + '\n');
   console.log('✔ ' + name + ' v' + version + '（' + out.length + ' 字元）');
 
+  colorWarnings(name, src).forEach(function (w) {
+    console.warn('⚠ ' + name + '：' + w.file + ':' + w.line + ' 寫死色值，請改用 shared/theme.js 的 tokens' +
+      '（內容色請在該行加 @design-literal）：' + w.text);
+  });
+
   var readme = path.join(dir, 'README.md');
   if (!fs.existsSync(readme) || fs.readFileSync(readme, 'utf8').indexOf('| v' + version + ' |') < 0) {
     console.warn('⚠ ' + name + '：README.md 版本紀錄缺少 v' + version + '，請更新文件');
@@ -100,4 +140,10 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { expandIncludes: expandIncludes, readTag: readTag, toBookmarklet: toBookmarklet };
+module.exports = {
+  expandIncludes: expandIncludes,
+  readTag: readTag,
+  toBookmarklet: toBookmarklet,
+  findColorLiterals: findColorLiterals,
+  colorWarnings: colorWarnings
+};

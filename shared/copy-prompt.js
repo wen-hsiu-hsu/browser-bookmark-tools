@@ -1,6 +1,9 @@
 /* @include toast */
 /* @include clipboard */
 
+var COPY_ICON = [['rect', { x: 8, y: 8, width: 12, height: 12, rx: 2 }],
+  ['path', { d: 'M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2' }]];
+
 /**
  * 先直接複製；失敗時改顯示「點此複製」按鈕，使用者點擊時再複製一次。
  *
@@ -19,17 +22,22 @@ function copyOrPrompt(text, okMsg, label) {
     var t = d.getElementById('__bmt_toast__');
     if (t && t.parentNode) t.parentNode.removeChild(t);
 
+    var T = bmtTheme();
     var b = d.createElement('button');
     b.id = '__bmt_copy_btn__';
     b.type = 'button';
-    b.textContent = label;
-    b.style.cssText =
-      'all:initial;display:block;box-sizing:border-box;cursor:pointer;' +
+    // 可點的按鈕用實心 fill，與不可點的 toast（主題底色）做出區別
+    bmtCss(b,
+      'display:flex;align-items:center;gap:10px;cursor:pointer;' +
       'position:fixed;top:20px;left:50%;transform:translateX(-50%);' +
-      'z-index:2147483647;color:#fff;background:#2563eb;padding:10px 16px;border-radius:6px;' +
-      'box-shadow:0 4px 12px rgba(0,0,0,.2);' +
-      'font:14px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;' +
-      'max-width:320px;text-align:center';
+      'z-index:' + T.zToast + ';color:' + T.onFill + ';background:' + T.fill + ';' +
+      'padding:10px 16px 10px 12px;border-radius:' + T.radiusMd + ';' +
+      'box-shadow:' + T.shadow + ';font:' + T.font + ';max-width:320px;text-align:left');
+    b.appendChild(bmtIcon(COPY_ICON, 18, T.onFill));
+    var txt = d.createElement('span');
+    bmtCss(txt, 'display:block;min-width:0;font:inherit;color:inherit;cursor:inherit');
+    txt.textContent = label;
+    b.appendChild(txt);
     b.onclick = function () {
       copyText(text, function (ok2) {
         // 成功才移除按鈕；失敗時保留，讓使用者可以再試，資料不會遺失

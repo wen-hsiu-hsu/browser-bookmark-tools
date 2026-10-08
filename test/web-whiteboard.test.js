@@ -67,8 +67,8 @@ async function open(html) {
       var el = d.getElementById('__bmt_toast__');
       return el && el.textContent;
     },
-    toastBg: function () {
-      return d.getElementById('__bmt_toast__').style.background;
+    toastType: function () {
+      return d.getElementById('__bmt_toast__').getAttribute('data-__bmt_type');
     },
     mouse: function (target, type, x, y, extra) {
       var init = {
@@ -167,7 +167,7 @@ test('重複點擊：只顯示提示，不重複建立', async function () {
   assert.strictEqual(t.d.querySelectorAll('#__bmt_wb_toolbar__').length, 1);
   assert.strictEqual(t.d.querySelectorAll('canvas').length, 1);
   assert.strictEqual(t.toast(), '白板已開啟');
-  assert.strictEqual(t.toastBg(), 'rgb(37, 99, 235)');
+  assert.strictEqual(t.toastType(), 'info');
 });
 
 test('舊版白板開著時不建立新版', async function () {
@@ -279,7 +279,7 @@ test('清除全部只清筆畫，可復原；沒有筆畫時提示', async funct
   var t = await open();
   t.click('清除全部');
   assert.strictEqual(t.toast(), '目前沒有筆畫');
-  assert.strictEqual(t.toastBg(), 'rgb(220, 38, 38)');
+  assert.strictEqual(t.toastType(), 'error');
   t.click('筆');
   t.drag([[0, 0], [10, 10]]);
   t.drag([[20, 20], [30, 30]]);
@@ -484,10 +484,28 @@ test('工具列按鈕使用 SVG 圖示與 title 提示；樣式加 !important', 
   var t = await open();
   var b = t.btn('橡皮擦');
   assert.ok(b.querySelector('svg path'));
-  assert.strictEqual(b.querySelector('svg').style.color, 'inherit', 'all:initial 後要讓圖示繼承按鈕的白色');
+  assert.strictEqual(b.querySelector('svg').style.color, 'inherit', 'all:initial 後要讓圖示繼承按鈕的文字色');
   assert.strictEqual(b.style.getPropertyPriority('background'), 'important');
   assert.ok(b.title);
   assert.strictEqual(b.textContent, '');
+});
+
+test('工具列配色：平常透明、選取中用 fill＋白字；色票有內框，選取中加強調色外環', async function () {
+  var t = await open();
+  assert.strictEqual(t.bar().style.background, 'rgb(28, 31, 36)', 'jsdom 沒有 matchMedia → 暗色 bg');
+  var pen = t.btn('筆');
+  var eraser = t.btn('橡皮擦');
+  assert.strictEqual(pen.style.background, 'rgb(37, 99, 235)');
+  assert.strictEqual(pen.style.color, 'rgb(255, 255, 255)');
+  assert.strictEqual(eraser.style.background, 'transparent');
+  assert.strictEqual(eraser.style.color, 'rgb(230, 232, 235)');
+  eraser.dispatchEvent(new t.win.Event('mouseenter'));
+  assert.strictEqual(eraser.style.background, 'rgba(255, 255, 255, 0.07)');
+  var black = t.btn('黑');
+  var red = t.btn('紅');
+  assert.ok(black.style.boxShadow.indexOf('#7cb7ff') >= 0, '預設黑色被選取：強調色外環');
+  assert.ok(/inset/.test(red.style.boxShadow), '未選取也有內框');
+  assert.ok(red.style.boxShadow.indexOf('#7cb7ff') < 0);
 });
 
 test('關閉：空白直接關；有內容時取消不關、確認才關', async function () {
