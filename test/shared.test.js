@@ -40,7 +40,7 @@ function makeWindow() {
     }
     now = end;
   };
-  win.eval(read('shared/toast.js') + read('shared/clipboard.js'));
+  win.eval(build.expandIncludes('/* @include toast */\n/* @include clipboard */\n/* @include copy-prompt */'));
   return win;
 }
 
@@ -52,7 +52,7 @@ test('toast：預設 success，2500ms 後淡出、300ms 後移除', function () 
   var win = makeWindow();
   win.toast('已複製');
   assert.strictEqual(el(win).textContent, '已複製');
-  assert.strictEqual(el(win).style.background, 'rgb(22, 163, 74)');
+  assert.strictEqual(el(win).getAttribute('data-__bmt_type'), 'success');
   assert.strictEqual(el(win).style.opacity, '1');
   win.tick(2499);
   assert.strictEqual(el(win).style.opacity, '1');
@@ -79,12 +79,59 @@ test('toast：新建時先以 opacity 0 插入再設為 1（淡入）', function
   assert.strictEqual(el(win).style.opacity, '1');
 });
 
-test('toast：error / info 顏色', function () {
+test('toast：類型記在 data-__bmt_type，狀態色條跟著變；底色為主題 bg', function () {
   var win = makeWindow();
   win.toast('x', 'error');
-  assert.strictEqual(el(win).style.background, 'rgb(220, 38, 38)');
+  assert.strictEqual(el(win).getAttribute('data-__bmt_type'), 'error');
+  assert.strictEqual(el(win).style.borderLeftColor, 'rgb(248, 113, 113)');
+  assert.strictEqual(el(win).style.background, 'rgb(28, 31, 36)', 'jsdom 沒有 matchMedia → 暗色');
   win.toast('x', 'info');
-  assert.strictEqual(el(win).style.background, 'rgb(37, 99, 235)');
+  assert.strictEqual(el(win).getAttribute('data-__bmt_type'), 'info');
+  assert.strictEqual(el(win).style.borderLeftColor, 'rgb(124, 183, 255)');
+  win.toast('x', 'whatever');
+  assert.strictEqual(el(win).getAttribute('data-__bmt_type'), 'success');
+});
+
+test('toast：info 持續顯示時 icon 換成轉圈；原地更新文字不重建 icon', function () {
+  var win = makeWindow();
+  win.toast('3', 'info', 0);
+  var spin = el(win).querySelector('svg');
+  assert.strictEqual(spin.querySelectorAll('circle').length, 1);
+  assert.strictEqual(spin.querySelectorAll('path').length, 1);
+  win.toast('2', 'info', 0);
+  assert.strictEqual(el(win).querySelector('svg'), spin, '讀秒時不換 icon');
+  win.toast('完成');
+  assert.notStrictEqual(el(win).querySelector('svg'), spin);
+  assert.strictEqual(el(win).textContent, '完成');
+});
+
+test('toast：樣式加 !important，頁面樣式表蓋不掉', function () {
+  var win = makeWindow();
+  win.toast('x');
+  assert.strictEqual(el(win).style.getPropertyPriority('background'), 'important');
+  assert.strictEqual(el(win).style.getPropertyPriority('opacity'), 'important');
+  assert.strictEqual(el(win).style.getPropertyPriority('border-left-color'), 'important');
+});
+
+test('toast：舊版書籤改寫過同 id 的 toast（文字被覆寫）→ 移除後以新樣式重建', function () {
+  var win = makeWindow();
+  win.toast('a');
+  var first = el(win);
+  first.textContent = '舊版寫入'; // 舊版 toast() 直接設定 textContent
+  win.toast('b');
+  assert.notStrictEqual(el(win), first);
+  assert.strictEqual(win.document.querySelectorAll('#__bmt_toast__').length, 1);
+  assert.strictEqual(el(win).textContent, 'b');
+  assert.ok(el(win).querySelector('svg'));
+  // 舊版建立的 toast（沒有 icon 結構）
+  el(win).remove();
+  var legacy = win.document.createElement('div');
+  legacy.id = '__bmt_toast__';
+  legacy.textContent = 'old';
+  win.document.body.appendChild(legacy);
+  win.toast('c');
+  assert.strictEqual(win.document.querySelectorAll('#__bmt_toast__').length, 1);
+  assert.strictEqual(el(win).textContent, 'c');
 });
 
 test('toast：重複呼叫只保留一個，舊計時器不會刪掉新 toast', function () {
@@ -122,7 +169,66 @@ test('toast：清除舊版 __lm_md_toast__', function () {
 test('toast：以 textContent 寫入，不解析 HTML', function () {
   var win = makeWindow();
   win.toast('<b>x</b>');
-  assert.strictEqual(el(win).children.length, 0);
+  assert.strictEqual(el(win).querySelector('b'), null);
+  assert.strictEqual(el(win).textContent, '<b>x</b>');
+});
+
+test('theme：沒有 matchMedia → 暗色；prefers-color-scheme: light → 亮色；結果快取', function () {
+  var win = makeWindow();
+  assert.strictEqual(win.bmtTheme().dark, true);
+  assert.strictEqual(win.bmtTheme().bg, '#1c1f24');
+
+  var light = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only' }).window;
+  var calls = 0;
+  light.matchMedia = function (q) {
+    calls++;
+    return { matches: q === '(prefers-color-scheme: light)' };
+  };
+  light.eval(build.expandIncludes('/* @include theme */'));
+  var t = light.bmtTheme();
+  assert.strictEqual(t.dark, false);
+  assert.strictEqual(t.bg, '#ffffff');
+  assert.strictEqual(t.accent, '#2563eb');
+  assert.strictEqual(light.bmtTheme(), t, '同一次執行只判斷一次');
+  assert.strictEqual(calls, 1);
+
+  // 不支援 prefers-color-scheme（兩個查詢都不成立）→ 暗色
+  var none = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only' }).window;
+  none.matchMedia = function () { return { matches: false }; };
+  none.eval(build.expandIncludes('/* @include theme */'));
+  assert.strictEqual(none.bmtTheme().dark, true);
+
+  // matchMedia 拋錯 → 暗色
+  var bad = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only' }).window;
+  bad.matchMedia = function () { throw new Error('x'); };
+  bad.eval(build.expandIncludes('/* @include theme */'));
+  assert.strictEqual(bad.bmtTheme().dark, true);
+});
+
+test('theme：bmtCss／bmtSet 每條樣式都加 !important', function () {
+  var win = makeWindow();
+  var e = win.document.createElement('div');
+  win.bmtCss(e, 'color:red;padding:4px');
+  assert.strictEqual(e.style.getPropertyPriority('color'), 'important');
+  assert.strictEqual(e.style.getPropertyPriority('padding-top'), 'important');
+  assert.strictEqual(e.style.boxSizing, 'border-box');
+  win.bmtSet(e, 'color', 'blue');
+  assert.strictEqual(e.style.color, 'blue');
+  assert.strictEqual(e.style.getPropertyPriority('color'), 'important');
+});
+
+test('copy-prompt：按鈕用實心 fill、有複製 icon，文字以 textContent 寫入', async function () {
+  var win = makeWindow();
+  win.document.execCommand = function () { return false; };
+  win.copyOrPrompt('data', '已複製', '<i>點此複製</i>');
+  await new Promise(function (r) { setImmediate(r); });
+  var b = win.document.getElementById('__bmt_copy_btn__');
+  assert.ok(b);
+  assert.strictEqual(b.style.background, 'rgb(37, 99, 235)');
+  assert.strictEqual(b.style.getPropertyPriority('background'), 'important');
+  assert.ok(b.querySelector('svg'));
+  assert.strictEqual(b.querySelector('i'), null);
+  assert.strictEqual(b.textContent, '<i>點此複製</i>');
 });
 
 test('copyText：clipboard API 成功', async function () {
@@ -234,4 +340,50 @@ test('build：範本可建置並執行', async function () {
   win.eval(decodeURIComponent(url.slice('javascript:'.length)));
   await new Promise(function (r) { setImmediate(r); });
   assert.strictEqual(el(win).textContent, '已複製');
+});
+
+test('build：findColorLiterals 找出寫死色值，略過註解與 @design-literal', function () {
+  var src = [
+    "var a = '#fff';",
+    "var b = 'color:rgba(0,0,0,.5)';",
+    "var c = 'rgb(1,2,3)';",
+    "// 註解裡的 #123456 不算",
+    " * 文件註解 #abc 也不算",
+    "var d = ['#000000', '黑']; /* @design-literal */",
+    "var e = '&#123;';",
+    "var f = d.querySelector('#' + ID);",
+    "var g = 'abc#def';"
+  ].join('\n');
+  var got = build.findColorLiterals('x.js', src).map(function (w) { return w.line; });
+  assert.deepStrictEqual(got, [1, 2, 3]);
+});
+
+test('build：colorWarnings 檢查書籤與它 include 的 shared 元件，theme 除外；現有書籤都沒有警告', function () {
+  var w = build.colorWarnings('demo', "(function () {\n  /* @include toast */\n  var x = '#123456';\n})();");
+  assert.deepStrictEqual(w.map(function (x) { return x.file + ':' + x.line; }), ['bookmarks/demo/source.js:3']);
+  fs.readdirSync(path.join(ROOT, 'bookmarks')).forEach(function (n) {
+    if (n[0] === '_') return;
+    assert.deepStrictEqual(build.colorWarnings(n, read('bookmarks/' + n + '/source.js')), [], n);
+  });
+});
+
+test('bmtAnimate：被動畫的屬性改成一般優先權（important 會壓過動畫）；不支援時回傳 null', function () {
+  var win = makeWindow();
+  var calls = [];
+  win.Element.prototype.animate = function (frames, opts) {
+    calls.push({ node: this, opts: opts });
+    return { cancel: function () {} };
+  };
+  win.toast('讀秒', 'info', 0);
+  var svg = el(win).querySelector('svg');
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0].node, svg);
+  assert.strictEqual(calls[0].opts.iterations, Infinity);
+  assert.strictEqual(svg.style.getPropertyPriority('transform'), '');
+  assert.strictEqual(svg.style.getPropertyPriority('width'), 'important', '其他屬性維持 important');
+
+  var bare = makeWindow();
+  var e = bare.document.createElement('div');
+  e.animate = undefined;
+  assert.strictEqual(bare.bmtAnimate(e, [{ transform: 'none' }, { transform: 'none' }], 100), null);
 });

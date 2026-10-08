@@ -69,7 +69,7 @@ async function run(html, clipboardOk, setup) {
 
 function toast(win) {
   var el = win.document.getElementById('__bmt_toast__');
-  return el && { text: el.textContent, bg: el.style.background };
+  return el && { text: el.textContent, type: el.getAttribute('data-__bmt_type') };
 }
 
 test(T.label + '範例頁面：行內換行變空格、行間以空格連接', async function () {
@@ -85,7 +85,7 @@ test(T.label + '範例頁面：行內換行變空格、行間以空格連接', a
       "how do we know we're " +
       "calling it, there we go, there's a question."
   );
-  assert.deepStrictEqual(toast(r.win), { text: '已複製', bg: 'rgb(22, 163, 74)' });
+  assert.deepStrictEqual(toast(r.win), { text: '已複製', type: 'success' });
 });
 
 test(T.label + '不包含標題、按鈕等非逐字稿文字', async function () {
@@ -121,13 +121,13 @@ test(T.label + '找不到逐字稿 → error，不複製', async function () {
   assert.strictEqual(r.copied, null);
   assert.deepStrictEqual(toast(r.win), {
     text: '找不到逐字稿內容，請先開啟 Transcripts',
-    bg: 'rgb(220, 38, 38)'
+    type: 'error'
   });
 });
 
 test(T.label + 'clipboard 與 fallback 都失敗 → 複製失敗', async function () {
   var r = await run(FIXTURE, false);
-  assert.deepStrictEqual(toast(r.win), { text: '複製失敗', bg: 'rgb(220, 38, 38)' });
+  assert.deepStrictEqual(toast(r.win), { text: '複製失敗', type: 'error' });
 });
 
 // ---- v1.1.0：找不到逐字稿時自動點擊 Transcripts 按鈕 ----
@@ -180,11 +180,11 @@ test(T.label + '找不到逐字稿 → 點 Transcripts 按鈕、等待期間顯�
   var r = await run(OTHER_BTN + BTN, true, m.setup);
   assert.strictEqual(m.clicks.n, 1);
   assert.strictEqual(m.clicks.other, 0);
-  assert.deepStrictEqual(toast(r.win), { text: '正在開啟 Transcripts…', bg: 'rgb(37, 99, 235)' });
+  assert.deepStrictEqual(toast(r.win), { text: '正在開啟 Transcripts…', type: 'info' });
   r.tick(10000); // info toast 不會自動消失
   await flush();
   assert.strictEqual(r.copied, 'hello world');
-  assert.deepStrictEqual(toast(r.win), { text: '已複製', bg: 'rgb(22, 163, 74)' });
+  assert.deepStrictEqual(toast(r.win), { text: '已複製', type: 'success' });
   // fm-tools：面板是自己打開的，複製成功後再點一次關閉；舊版只點一次、面板保持開啟
   assert.strictEqual(m.clicks.n, T.tools ? 2 : 1);
   assert.strictEqual(!!r.win.document.querySelector('.FMPlayer2-Transcripts.active'), !T.tools);
@@ -194,7 +194,7 @@ test(T.label + '等待期間 info toast 持續顯示，不會自動消失', asyn
   var m = mountOnClick(2900);
   var r = await run(OTHER_BTN + BTN, true, m.setup);
   r.tick(2800);
-  assert.deepStrictEqual(toast(r.win), { text: '正在開啟 Transcripts…', bg: 'rgb(37, 99, 235)' });
+  assert.deepStrictEqual(toast(r.win), { text: '正在開啟 Transcripts…', type: 'info' });
   assert.strictEqual(r.copied, null);
   r.tick(200);
   await flush();
@@ -209,7 +209,7 @@ test(T.label + '點擊後 3 秒內仍抓不到 → 逾時 error，只點一次',
   assert.strictEqual(r.copied, null);
   assert.deepStrictEqual(toast(r.win), {
     text: '已開啟 Transcripts 但抓不到逐字稿，請稍後再試',
-    bg: 'rgb(220, 38, 38)'
+    type: 'error'
   });
   assert.strictEqual(m.clicks.n, 1);
 });
@@ -229,7 +229,7 @@ test(T.label + '沒有 Transcripts 按鈕（只有其他 RibbonButton）→ 直�
   assert.strictEqual(clicks, 0);
   assert.deepStrictEqual(toast(r.win), {
     text: '找不到逐字稿內容，請先開啟 Transcripts',
-    bg: 'rgb(220, 38, 38)'
+    type: 'error'
   });
 });
 
@@ -310,6 +310,6 @@ test(T.label + '自動開啟後複製失敗 → 複製失敗', async function ()
   var r = await run(OTHER_BTN + BTN, false, m.setup);
   r.tick(1000);
   await flush();
-  assert.deepStrictEqual(toast(r.win), { text: '複製失敗', bg: 'rgb(220, 38, 38)' });
+  assert.deepStrictEqual(toast(r.win), { text: '複製失敗', type: 'error' });
   assert.strictEqual(m.clicks.n, 1); // 複製失敗時不關閉，重試可直接複製
 });

@@ -1,6 +1,6 @@
 /**
  * @name    LCS Podcast 專注模式
- * @version 1.0.0
+ * @version 1.1.0
  * @desc    LearnCraft Spanish podcast 頁：移除頂部導覽列，播放器貼齊畫面頂端
  *
  * 建置：npm run build -- lcs-podcast-focus

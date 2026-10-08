@@ -28,7 +28,7 @@ async function run(html) {
 
 function toast(win) {
   var el = win.document.getElementById('__bmt_toast__');
-  return el && { text: el.textContent, error: el.style.background === 'rgb(220, 38, 38)' };
+  return el && { text: el.textContent, error: el.getAttribute('data-__bmt_type') === 'error' };
 }
 
 test(T.label + 'Flashcard：行內 code 轉反引號', async function () {

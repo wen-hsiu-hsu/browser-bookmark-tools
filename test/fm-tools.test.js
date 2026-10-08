@@ -422,7 +422,7 @@ test('不同版本的面板：閒置時換成新版', async function () {
   r.run();
   assert.notStrictEqual(r.panel(), old);
   assert.strictEqual(r.d.querySelectorAll('#' + ID).length, 1);
-  assert.strictEqual(r.panel().getAttribute('data-__bmt_ver'), '1.1.0');
+  assert.strictEqual(r.panel().getAttribute('data-__bmt_ver'), '1.2.0');
 });
 
 // ---- v1.1.0：右上角定位、縮小模式、icon 顏色、cursor ----
@@ -556,13 +556,45 @@ test('縮小模式：從拖曳點拖曳，從按鈕上按下不拖曳', async fu
   assert.strictEqual(p.style.top, '70px');
 });
 
-test('控制鈕 icon 為白色（不依賴 currentColor）', async function () {
+test('控制鈕 icon 使用主題 fg（不依賴 currentColor）', async function () {
   var r = await setup();
   [['full', '縮小'], ['full', '最小化'], ['full', '關閉'], ['compact', '展開'], ['compact', '最小化'],
     ['compact', '關閉'], ['mini', '還原']].forEach(function (x) {
     var svg = ctl(r, x[0], x[1]).querySelector('svg');
-    assert.strictEqual(svg.style.stroke, 'rgb(255, 255, 255)', x.join('/'));
+    assert.strictEqual(svg.style.stroke, 'rgb(230, 232, 235)', x.join('/')); // 暗色 fg
   });
+});
+
+test('亮色主題（prefers-color-scheme: light）：面板白底、icon 用亮色 fg；樣式加 !important', async function () {
+  await setup(); // 先建置 CODE
+  var win = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only' }).window;
+  win.matchMedia = function (q) {
+    return { matches: q === '(prefers-color-scheme: light)' };
+  };
+  win.eval(CODE);
+  var p = win.document.getElementById(ID);
+  var full = p.children[0];
+  assert.strictEqual(full.style.background, 'rgb(255, 255, 255)');
+  assert.strictEqual(p.style.color, 'rgb(28, 31, 36)');
+  assert.strictEqual(full.querySelector('[aria-label="關閉"] svg').style.stroke, 'rgb(28, 31, 36)');
+  assert.strictEqual(full.querySelector('[data-__bmt_cmd] svg').style.stroke, 'rgb(37, 99, 235)', '指令 icon 用 accent');
+  assert.strictEqual(full.style.getPropertyPriority('background'), 'important');
+  assert.strictEqual(p.style.getPropertyPriority('top'), 'important');
+});
+
+test('執行中的轉圈與進度條：transform 不是 important，Web Animations 才能生效', async function () {
+  var r = await setup('<div class="transcripts"></div><div class="FMPlayer2-Transcripts active"></div>');
+  var animated = [];
+  r.win.Element.prototype.animate = function () {
+    animated.push(this);
+    return { cancel: function () {} };
+  };
+  r.btn('transcript').click();
+  assert.ok(animated.length >= 4, '轉圈（展開、縮小）＋兩條進度條');
+  animated.forEach(function (n) {
+    assert.strictEqual(n.style.getPropertyPriority('transform'), '', n.tagName);
+  });
+  r.tick(4000);
 });
 
 test('按鈕與拖曳區內的子元素繼承 cursor', async function () {
