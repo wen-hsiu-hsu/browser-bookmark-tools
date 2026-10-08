@@ -90,10 +90,10 @@ async function setup(html) {
   return r;
 }
 
-/** 展開區塊與最小化區塊（root 的兩個子元素）。 */
+/** 展開、最小化、縮小三個區塊（root 的子元素）。 */
 function parts(r) {
   var p = r.panel();
-  return { full: p.children[0], mini: p.children[1] };
+  return { full: p.children[0], mini: p.children[1], compact: p.children[2] };
 }
 
 test('建立面板：標題、三顆按鈕（icon、文字、⌥⇧ 快捷鍵）', async function () {
@@ -126,7 +126,7 @@ test('最小化與展開', async function () {
   r.label('最小化').click();
   assert.strictEqual(parts(r).mini.style.display, 'flex');
   assert.ok(parts(r).mini.textContent.indexOf('Master.dev') >= 0);
-  r.label('展開').click();
+  r.label('還原').click();
   assert.strictEqual(parts(r).full.style.display, 'block');
   assert.strictEqual(parts(r).mini.style.display, 'none');
 });
@@ -199,7 +199,7 @@ test('最小化時執行：膠囊顯示外框與進度文字', async function ()
   assert.strictEqual(m.textContent.indexOf('載入中'), -1);
 });
 
-test('拖曳：限制在視窗內，位置以 right／bottom 表示；從按鈕上按下不會拖曳', async function () {
+test('拖曳：限制在視窗內，位置以 right／top 表示；從按鈕上按下不會拖曳', async function () {
   var r = await setup();
   var p = r.panel();
   var win = r.win;
@@ -216,13 +216,13 @@ test('拖曳：限制在視窗內，位置以 right／bottom 表示；從按鈕�
   mouse('mousedown', head, 110, 110);
   mouse('mousemove', r.d, 60, 80); // 位移 (-50, -30)
   assert.strictEqual(p.style.right, vw - 50 - 264 + 'px');
-  assert.strictEqual(p.style.bottom, vh - 70 - 200 + 'px');
+  assert.strictEqual(p.style.top, '70px');
   mouse('mousemove', r.d, -5000, -5000); // 拖出左上：限制在 0
   assert.strictEqual(p.style.right, vw - 264 + 'px');
-  assert.strictEqual(p.style.bottom, vh - 200 + 'px');
+  assert.strictEqual(p.style.top, '0px');
   mouse('mousemove', r.d, 5000, 5000); // 拖出右下：限制在 0
   assert.strictEqual(p.style.right, '0px');
-  assert.strictEqual(p.style.bottom, '0px');
+  assert.strictEqual(p.style.top, vh - 200 + 'px');
   mouse('mouseup', r.d, 0, 0);
   mouse('mousemove', r.d, 110, 110); // 放開後不再移動
   assert.strictEqual(p.style.right, '0px');
@@ -394,10 +394,10 @@ test('視窗縮小或重新點書籤：面板被夾回視窗內', async function
     return { left: 0, top: 0, width: 264, height: 200, right: 264, bottom: 200 };
   };
   p.style.right = '5000px';
-  p.style.bottom = '-50px';
+  p.style.top = '-50px';
   r.win.dispatchEvent(new r.win.Event('resize'));
   assert.strictEqual(p.style.right, r.win.innerWidth - 264 + 'px');
-  assert.strictEqual(p.style.bottom, '0px');
+  assert.strictEqual(p.style.top, '0px');
   p.style.right = '5000px';
   r.run();
   assert.strictEqual(p.style.right, r.win.innerWidth - 264 + 'px');
@@ -422,5 +422,201 @@ test('不同版本的面板：閒置時換成新版', async function () {
   r.run();
   assert.notStrictEqual(r.panel(), old);
   assert.strictEqual(r.d.querySelectorAll('#' + ID).length, 1);
-  assert.strictEqual(r.panel().getAttribute('data-__bmt_ver'), '1.0.0');
+  assert.strictEqual(r.panel().getAttribute('data-__bmt_ver'), '1.1.0');
+});
+
+// ---- v1.1.0：右上角定位、縮小模式、icon 顏色、cursor ----
+
+/** 依 display 判斷目前模式。 */
+function mode(r) {
+  var p = parts(r);
+  if (p.full.style.display === 'block') return 'full';
+  if (p.compact.style.display === 'flex') return 'compact';
+  if (p.mini.style.display === 'flex') return 'mini';
+  return null;
+}
+
+/** 在指定區塊內找控制鈕。 */
+function ctl(r, part, name) {
+  return parts(r)[part].querySelector('[aria-label="' + name + '"]');
+}
+
+function cbtn(r, id) {
+  return r.d.querySelector('#' + ID + ' [data-__bmt_ccmd="' + id + '"]');
+}
+
+test('初始位置在右下角，以 right／top 表示', async function () {
+  var r = await setup();
+  var p = r.panel();
+  assert.strictEqual(p.style.right, '16px');
+  assert.strictEqual(p.style.top, r.win.innerHeight - 16 + 'px'); // jsdom 量不到高度，高度為 0
+  assert.strictEqual(p.style.bottom, '');
+});
+
+test('切換模式時右上角不動', async function () {
+  var r = await setup();
+  var p = r.panel();
+  p.style.right = '40px';
+  p.style.top = '30px';
+  ctl(r, 'full', '最小化').click();
+  assert.strictEqual(mode(r), 'mini');
+  assert.strictEqual(p.style.right, '40px');
+  assert.strictEqual(p.style.top, '30px');
+  ctl(r, 'mini', '還原').click();
+  ctl(r, 'full', '縮小').click();
+  assert.strictEqual(mode(r), 'compact');
+  assert.strictEqual(p.style.right, '40px');
+  assert.strictEqual(p.style.top, '30px');
+});
+
+test('三種模式直達切換；膠囊還原到最小化前的模式', async function () {
+  var r = await setup();
+  ctl(r, 'full', '縮小').click();
+  assert.strictEqual(mode(r), 'compact');
+  ctl(r, 'compact', '最小化').click();
+  assert.strictEqual(mode(r), 'mini');
+  ctl(r, 'mini', '還原').click();
+  assert.strictEqual(mode(r), 'compact', '回到縮小');
+  ctl(r, 'compact', '展開').click();
+  assert.strictEqual(mode(r), 'full');
+  ctl(r, 'full', '最小化').click();
+  ctl(r, 'mini', '還原').click();
+  assert.strictEqual(mode(r), 'full', '回到展開');
+  ctl(r, 'full', '縮小').click();
+  ctl(r, 'compact', '關閉').click();
+  assert.strictEqual(r.panel(), null);
+});
+
+test('重複點書籤：最小化時還原到之前的模式；縮小時維持縮小', async function () {
+  var r = await setup();
+  ctl(r, 'full', '縮小').click();
+  r.run();
+  assert.strictEqual(mode(r), 'compact');
+  ctl(r, 'compact', '最小化').click();
+  r.run();
+  assert.strictEqual(mode(r), 'compact');
+});
+
+test('縮小模式：只有 icon，title 帶名稱與快捷鍵；點擊可執行', async function () {
+  var r = await setup(CARD);
+  ctl(r, 'full', '縮小').click();
+  var c = parts(r).compact;
+  assert.strictEqual(c.textContent, '', '沒有文字');
+  assert.strictEqual(c.querySelectorAll('[data-__bmt_ccmd]').length, 3);
+  assert.strictEqual(cbtn(r, 'md').title, '目前這題轉 MD（⌥⇧1）');
+  assert.ok(cbtn(r, 'md').querySelector('svg'));
+  cbtn(r, 'md').click();
+  await flush();
+  assert.deepStrictEqual(r.copied, ['### Q\n\nA']);
+});
+
+test('縮小模式執行中：外框、進度條、進度寫在 title、其他按鈕與關閉停用；結束後恢復', async function () {
+  var r = await setup('<div class="transcripts"></div><div class="FMPlayer2-Transcripts active"></div>');
+  ctl(r, 'full', '縮小').click();
+  cbtn(r, 'transcript').click();
+  var c = parts(r).compact;
+  assert.ok(/^0 0 0 2px/.test(c.style.boxShadow));
+  assert.strictEqual(c.children[1].style.display, 'block', '進度條顯示');
+  assert.strictEqual(c.textContent, '', '不顯示進度文字');
+  assert.strictEqual(cbtn(r, 'transcript').title, '逐字稿複製：載入中');
+  assert.strictEqual(cbtn(r, 'md').disabled, true);
+  assert.strictEqual(ctl(r, 'compact', '關閉').disabled, true);
+  ctl(r, 'compact', '關閉').click();
+  assert.ok(r.panel(), '執行中不能關閉');
+  r.tick(4000);
+  assert.ok(!/^0 0 0 2px/.test(c.style.boxShadow));
+  assert.strictEqual(c.children[1].style.display, 'none');
+  assert.strictEqual(cbtn(r, 'transcript').title, '逐字稿複製（⌥⇧3）');
+  assert.strictEqual(cbtn(r, 'md').disabled, false);
+  assert.strictEqual(ctl(r, 'compact', '關閉').disabled, false);
+});
+
+test('縮小模式：從拖曳點拖曳，從按鈕上按下不拖曳', async function () {
+  var r = await setup();
+  var p = r.panel();
+  var win = r.win;
+  ctl(r, 'full', '縮小').click();
+  p.getBoundingClientRect = function () {
+    return { left: 100, top: 100, width: 44, height: 200, right: 144, bottom: 300 };
+  };
+  function mouse(type, target, x, y) {
+    target.dispatchEvent(new win.MouseEvent(type, { clientX: x, clientY: y, button: 0, buttons: 1, bubbles: true }));
+  }
+  var right = p.style.right;
+  var top = p.style.top;
+  mouse('mousedown', cbtn(r, 'md'), 110, 110);
+  mouse('mousemove', r.d, 60, 80);
+  mouse('mouseup', r.d, 0, 0);
+  assert.strictEqual(p.style.right, right, '從按鈕開始不拖曳');
+  assert.strictEqual(p.style.top, top);
+  mouse('mousedown', parts(r).compact.children[0], 110, 110);
+  mouse('mousemove', r.d, 60, 80);
+  mouse('mouseup', r.d, 0, 0);
+  assert.notStrictEqual(p.style.right, right);
+  assert.strictEqual(p.style.top, '70px');
+});
+
+test('控制鈕 icon 為白色（不依賴 currentColor）', async function () {
+  var r = await setup();
+  [['full', '縮小'], ['full', '最小化'], ['full', '關閉'], ['compact', '展開'], ['compact', '最小化'],
+    ['compact', '關閉'], ['mini', '還原']].forEach(function (x) {
+    var svg = ctl(r, x[0], x[1]).querySelector('svg');
+    assert.strictEqual(svg.style.stroke, 'rgb(255, 255, 255)', x.join('/'));
+  });
+});
+
+test('按鈕與拖曳區內的子元素繼承 cursor', async function () {
+  var r = await setup();
+  var p = r.panel();
+  assert.strictEqual(p.style.cursor, 'default');
+  Array.prototype.forEach.call(p.querySelectorAll('button *, div *'), function (e) {
+    if (e.tagName === 'BUTTON') return;
+    var c = e.style.cursor;
+    assert.ok(c === 'inherit' || c === 'move', e.tagName + ' cursor=' + c);
+  });
+  assert.strictEqual(parts(r).full.children[0].style.cursor, 'move', '標題列');
+  assert.strictEqual(parts(r).compact.children[0].style.cursor, 'move', '縮小欄拖曳點');
+});
+
+test('初始位置扣掉面板高度', async function () {
+  var r = await setup();
+  var Proto = r.win.HTMLElement.prototype;
+  Proto.getBoundingClientRect = function () {
+    return { left: 0, top: 0, width: 264, height: 200, right: 264, bottom: 200 };
+  };
+  r.panel().remove();
+  r.run();
+  assert.strictEqual(r.panel().style.top, r.win.innerHeight - 216 + 'px');
+});
+
+test('執行中切換模式：兩種模式都呈現執行中；縮小模式的 icon 換成轉圈，結束後換回', async function () {
+  var r = await setup('<div class="transcripts"></div><div class="FMPlayer2-Transcripts active"></div>');
+  var orig = cbtn(r, 'transcript').querySelector('svg');
+  r.btn('transcript').click();
+  ctl(r, 'full', '縮小').click();
+  assert.strictEqual(mode(r), 'compact');
+  var spin = cbtn(r, 'transcript').querySelector('svg');
+  assert.notStrictEqual(spin, orig);
+  assert.strictEqual(spin.querySelectorAll('circle').length, 1, '轉圈 icon');
+  assert.strictEqual(cbtn(r, 'md').style.opacity, '0.4');
+  assert.strictEqual(cbtn(r, 'transcript').style.background, 'rgba(255, 255, 255, 0.07)');
+  ctl(r, 'compact', '展開').click();
+  assert.strictEqual(r.btn('transcript').textContent.indexOf('載入中') >= 0, true);
+  r.tick(4000);
+  assert.strictEqual(cbtn(r, 'transcript').querySelectorAll('rect').length, 1, '換回原 icon');
+  assert.strictEqual(cbtn(r, 'md').style.opacity, '1');
+});
+
+test('用鍵盤切換模式：焦點移到新模式的控制鈕', async function () {
+  var r = await setup();
+  ctl(r, 'full', '縮小').focus();
+  ctl(r, 'full', '縮小').click();
+  assert.strictEqual(r.d.activeElement, ctl(r, 'compact', '展開'));
+  ctl(r, 'compact', '最小化').focus();
+  ctl(r, 'compact', '最小化').click();
+  assert.strictEqual(r.d.activeElement, ctl(r, 'mini', '還原'));
+  r.d.body.focus();
+  r.d.activeElement.blur();
+  ctl(r, 'mini', '還原').click(); // 滑鼠操作（焦點不在面板內）：不搶焦點
+  assert.notStrictEqual(r.d.activeElement && r.d.activeElement.closest && r.d.activeElement.closest('#' + ID), r.panel());
 });
