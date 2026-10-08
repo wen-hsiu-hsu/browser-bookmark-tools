@@ -6,6 +6,7 @@ var fs = require('fs');
 var path = require('path');
 var JSDOM = require('jsdom').JSDOM;
 var build = require('../scripts/build.js');
+var T = require('./fm-target.js');
 
 var SRC = fs.readFileSync(path.join(__dirname, '../bookmarks/fm-flashcard-batch/source.js'), 'utf8');
 var CODE;
@@ -72,7 +73,7 @@ function cardHtml(c) {
  */
 async function run(cards, opts, clipboardOk) {
   opts = opts || {};
-  if (!CODE) CODE = decodeURIComponent((await build.toBookmarklet(SRC)).slice('javascript:'.length));
+  if (!CODE) CODE = await T.code(SRC, 'batch');
   var win = new JSDOM(
     '<!doctype html><body><div class="LearningMode-main"><div class="LearningMode-content" data-step-type="flashcard"></div>' +
       '<div class="LearningMode-actions"><div class="LM-Content-Actions">' +
@@ -179,7 +180,7 @@ var GREEN = 'rgb(22, 163, 74)';
 var RED = 'rgb(220, 38, 38)';
 var BLUE = 'rgb(37, 99, 235)';
 
-test('從中間開始：先回到第一張，再依序擷取全部卡片並一次複製', async function () {
+test(T.label + '從中間開始：先回到第一張，再依序擷取全部卡片並一次複製', async function () {
   var r = await run(DECK, { start: 2 });
   assert.deepStrictEqual(r.toast(), { text: '回到第一張…', bg: BLUE });
   await r.done();
@@ -188,20 +189,20 @@ test('從中間開始：先回到第一張，再依序擷取全部卡片並一�
   assert.strictEqual(r.win.document.documentElement.hasAttribute('data-__bmt_fm_batch'), false);
 });
 
-test('擷取過程中顯示進度', async function () {
+test(T.label + '擷取過程中顯示進度', async function () {
   var r = await run(DECK);
   assert.deepStrictEqual(r.toast(), { text: '複製中… 第 1 張', bg: BLUE });
   r.tick(450);
   assert.deepStrictEqual(r.toast(), { text: '複製中… 第 2 張', bg: BLUE });
 });
 
-test('最後一張的 Next 被移除也能正常結束', async function () {
+test(T.label + '最後一張的 Next 被移除也能正常結束', async function () {
   var r = await run(DECK, { lastNext: 'missing' });
   await r.done();
   assert.deepStrictEqual(r.copied, [EXPECTED]);
 });
 
-test('缺背面的卡片略過並繼續', async function () {
+test(T.label + '缺背面的卡片略過並繼續', async function () {
   var deck = DECK.slice();
   deck[1] = { front: '<p>No back</p>', back: null };
   var r = await run(deck);
@@ -211,14 +212,14 @@ test('缺背面的卡片略過並繼續', async function () {
   assert.strictEqual(r.toast().text, '已複製 3 題，略過 1 張');
 });
 
-test('最後一張 Next 點了沒反應 → 逾時中止，但內容完整', async function () {
+test(T.label + '最後一張 Next 點了沒反應 → 逾時中止，但內容完整', async function () {
   var r = await run(DECK, { lastNext: 'noop' });
   await r.done();
   assert.deepStrictEqual(r.copied, [EXPECTED]);
   assert.strictEqual(r.toast().text, '已複製 4 題（逾時中止）');
 });
 
-test('無限張卡 → 達 100 張上限中止', async function () {
+test(T.label + '無限張卡 → 達 100 張上限中止', async function () {
   var r = await run(null, { infinite: true });
   await r.done(200000);
   assert.strictEqual(r.copied[0].split('### ').length - 1, 100);
@@ -226,13 +227,13 @@ test('無限張卡 → 達 100 張上限中止', async function () {
   assert.strictEqual(r.toast().text, '已複製 100 題（達上限中止）');
 });
 
-test('背面比正面晚更新：擷取到的正反面屬於同一張', async function () {
+test(T.label + '背面比正面晚更新：擷取到的正反面屬於同一張', async function () {
   var r = await run(DECK, { backDelay: 150 });
   await r.done();
   assert.deepStrictEqual(r.copied, [EXPECTED]);
 });
 
-test('複製失敗 → 顯示「點此複製」按鈕，點擊後複製成功並移除按鈕', async function () {
+test(T.label + '複製失敗 → 顯示「點此複製」按鈕，點擊後複製成功並移除按鈕', async function () {
   var r = await run(DECK, {}, false);
   await r.done();
   var d = r.win.document;
@@ -250,7 +251,7 @@ test('複製失敗 → 顯示「點此複製」按鈕，點擊後複製成功並
   assert.deepStrictEqual(r.toast(), { text: '已複製 4 題', bg: GREEN });
 });
 
-test('Previous 點了沒反應 → 無法回到第一張', async function () {
+test(T.label + 'Previous 點了沒反應 → 無法回到第一張', async function () {
   var r = await run(DECK, { start: 1, prevBroken: true });
   await r.done(3500);
   assert.deepStrictEqual(r.copied, []);
@@ -258,17 +259,18 @@ test('Previous 點了沒反應 → 無法回到第一張', async function () {
   assert.strictEqual(r.win.document.documentElement.hasAttribute('data-__bmt_fm_batch'), false);
 });
 
-test('執行中再點一次 → 提示執行中，不重跑', async function () {
+test(T.label + '執行中再點一次 → 提示執行中，不重跑', async function () {
   var r = await run(DECK);
   r.tick(100);
   r.again();
-  assert.deepStrictEqual(r.toast(), { text: '批次複製執行中', bg: BLUE });
+  // fm-tools：執行中按鈕是 disabled，再點不會有反應，進度 toast 維持不變
+  assert.deepStrictEqual(r.toast(), { text: T.tools ? '複製中… 第 1 張' : '批次複製執行中', bg: BLUE });
   await r.done();
   assert.deepStrictEqual(r.copied, [EXPECTED]);
 });
 
-test('沒有 flashcard → 找不到 flashcard 內容', async function () {
-  if (!CODE) CODE = decodeURIComponent((await build.toBookmarklet(SRC)).slice('javascript:'.length));
+test(T.label + '沒有 flashcard → 找不到 flashcard 內容', async function () {
+  if (!CODE) CODE = await T.code(SRC, 'batch');
   var win = new JSDOM('<!doctype html><body><div class="LM-Quiz"></div></body>', { runScripts: 'outside-only' }).window;
   win.eval(CODE);
   var el = win.document.getElementById('__bmt_toast__');
@@ -276,27 +278,27 @@ test('沒有 flashcard → 找不到 flashcard 內容', async function () {
   assert.strictEqual(el.style.background, RED);
 });
 
-test('Next 進到非 flashcard 步驟（例如 Quiz）→ 視為結束，不計入略過', async function () {
+test(T.label + 'Next 進到非 flashcard 步驟（例如 Quiz）→ 視為結束，不計入略過', async function () {
   var r = await run(DECK.concat([{ quiz: true }]));
   await r.done();
   assert.deepStrictEqual(r.copied, [EXPECTED]);
   assert.strictEqual(r.toast().text, '已複製 4 題');
 });
 
-test('Previous 退到非 flashcard 步驟 → 點一次 Next 回到第一張再開始', async function () {
+test(T.label + 'Previous 退到非 flashcard 步驟 → 點一次 Next 回到第一張再開始', async function () {
   var r = await run([{ quiz: true }].concat(DECK), { start: 3 });
   await r.done();
   assert.deepStrictEqual(r.copied, [EXPECTED]);
   assert.strictEqual(r.toast().text, '已複製 4 題');
 });
 
-test('React 式更新（節點不變、只換內容）也能偵測換卡', async function () {
+test(T.label + 'React 式更新（節點不變、只換內容）也能偵測換卡', async function () {
   var r = await run(DECK, { start: 2, reuse: true });
   await r.done();
   assert.deepStrictEqual(r.copied, [EXPECTED]);
 });
 
-test('上次留下的「點此複製」按鈕在重新執行時移除', async function () {
+test(T.label + '上次留下的「點此複製」按鈕在重新執行時移除', async function () {
   var r = await run(DECK, {}, false);
   await r.done();
   assert.ok(r.win.document.getElementById('__bmt_copy_btn__'));
@@ -304,7 +306,7 @@ test('上次留下的「點此複製」按鈕在重新執行時移除', async fu
   assert.strictEqual(r.win.document.getElementById('__bmt_copy_btn__'), null);
 });
 
-test('點按鈕後複製仍失敗 → 保留按鈕可再試', async function () {
+test(T.label + '點按鈕後複製仍失敗 → 保留按鈕可再試', async function () {
   var r = await run(DECK, {}, false);
   await r.done();
   var btn = r.win.document.getElementById('__bmt_copy_btn__');
@@ -314,18 +316,18 @@ test('點按鈕後複製仍失敗 → 保留按鈕可再試', async function () 
   assert.deepStrictEqual(r.toast(), { text: '複製失敗', bg: RED });
 });
 
-test('等待換卡期間持續更新執行中標記，不會被誤判為已結束', async function () {
+test(T.label + '等待換卡期間持續更新執行中標記，不會被誤判為已結束', async function () {
   var r = await run(DECK, { lastNext: 'noop' });
   r.tick(600); // 走到最後一張，開始等 Next（不會有反應）
   r.tick(2500);
   var flag = +r.win.document.documentElement.getAttribute('data-__bmt_fm_batch');
   assert.ok(r.win.Date.now() - flag <= 100);
   r.again();
-  assert.strictEqual(r.toast().text, '批次複製執行中');
+  assert.strictEqual(r.toast().text, T.tools ? '複製中… 第 4 張' : '批次複製執行中');
 });
 
-test('殘留的過期標記（例如上次執行中途出錯）不會擋住新的執行', async function () {
-  if (!CODE) CODE = decodeURIComponent((await build.toBookmarklet(SRC)).slice('javascript:'.length));
+test(T.label + '殘留的過期標記（例如上次執行中途出錯）不會擋住新的執行', async function () {
+  if (!CODE) CODE = await T.code(SRC, 'batch');
   var r = await run(DECK, {}); // 先正常跑完一次
   await r.done();
   r.win.document.documentElement.setAttribute('data-__bmt_fm_batch', r.win.Date.now() - 5000);
