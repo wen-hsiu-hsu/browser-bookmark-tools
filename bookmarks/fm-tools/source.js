@@ -15,10 +15,16 @@
   var d = document;
   var root = d.documentElement;
   var ID = '__bmt_fm_tools__';
+  var VERSION = '1.0.0';
 
-  // 重複點書籤：面板已存在就展開，不建立第二個
+  // 重複點書籤：同版本的面板已存在就展開，不建立第二個。
+  // 不同版本（使用者換了新版書籤）：舊面板閒置時換成新版；執行中則請使用者稍後再試
   var old = d.getElementById(ID);
-  if (old && old.__bmtPanel) return old.__bmtPanel.expand();
+  if (old && old.__bmtPanel) {
+    if (old.getAttribute('data-__bmt_ver') === VERSION) return old.__bmtPanel.expand();
+    if (old.__bmtPanel.busy()) return toast('舊版面板執行中，請稍後再點一次', 'error');
+    old.__bmtPanel.close();
+  }
   if (old && old.parentNode) old.parentNode.removeChild(old);
 
   function q(sel) {
@@ -296,12 +302,13 @@
   function copyTranscript(ctx) {
     var opened = false; // 面板是否由這次執行打開
 
-    function copy(text) {
+    /** partial：逾時時內容可能還沒載完，保留面板讓使用者可以再複製一次。 */
+    function copy(text, partial) {
       copyText(text, function (ok) {
         toast(ok ? '已複製' : '複製失敗', ok ? 'success' : 'error');
-        // 只在複製成功、且面板是自己打開的時候關閉；失敗時保留，重試可直接複製。
+        // 只在複製成功、且面板是自己打開的時候關閉；失敗或逾時時保留，重試可直接複製。
         // 按鈕是開關式：確認面板仍是開啟狀態（.active）才點，避免反過來把它打開
-        if (ok && opened && q(TS_ACTIVE)) {
+        if (ok && opened && !partial && q(TS_ACTIVE)) {
           var b = q(TS_BTN);
           if (b) b.click();
         }
@@ -335,7 +342,7 @@
       var timeout = (waited += POLL_MS) > WAIT_MS;
       if (t && (t === last || timeout)) {
         root.removeAttribute(OPEN_FLAG);
-        return copy(t);
+        return copy(t, t !== last);
       }
       if (timeout) {
         root.removeAttribute(OPEN_FLAG);
@@ -355,7 +362,8 @@
     id: ID,
     title: 'Master.dev 工具',
     mini: 'Master.dev',
-    footer: 'v1.0.0 · 拖曳標題列移動',
+    version: VERSION,
+    footer: 'v' + VERSION + ' · 拖曳標題列移動',
     commands: [
       {
         id: 'md',

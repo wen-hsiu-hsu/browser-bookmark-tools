@@ -13,8 +13,11 @@ var tools = !!global.__bmtFmTools;
 var TOOLS_SRC = fs.readFileSync(path.join(__dirname, '../bookmarks/fm-tools/source.js'), 'utf8');
 
 /** 建置並回傳可直接 eval 的程式碼。cmd：fm-tools 中對應的指令 id。 */
+var cache = {};
+
 async function code(src, cmd) {
-  var url = await build.toBookmarklet(tools ? TOOLS_SRC : src);
+  var key = tools ? TOOLS_SRC : src;
+  var url = cache[key] || (cache[key] = await build.toBookmarklet(key));
   var out = decodeURIComponent(url.slice('javascript:'.length));
   if (tools) out += ';document.querySelector(\'#__bmt_fm_tools__ [data-__bmt_cmd="' + cmd + '"]\').click();';
   return out;
