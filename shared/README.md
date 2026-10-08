@@ -101,7 +101,7 @@ Frontend Masters Learning Mode 專用：`toMd(el)` 把元素轉成 Markdown。
 - 區塊元素（`p`、`div`、`li`、`br`、`h1`–`h6` 等）之間以一個換行分隔；其他標籤只取文字。
 - 另外提供 `codeOf(pre)`、`fence(pre)`、`BLOCK`。
 
-使用者：`fm-learning-md`、`fm-flashcard-batch`。修改轉換規則時，兩個書籤都要升版。
+使用者：`fm-tools`、`fm-learning-md`、`fm-flashcard-batch`（後兩者已停止維護）。修改轉換規則時，`fm-tools` 要升版。
 
 ---
 
