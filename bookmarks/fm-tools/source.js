@@ -283,7 +283,17 @@
   // =====================================================================
 
   var OPEN_FLAG = 'data-__bmt_fm_opening'; // 與舊版書籤共用
-  var TS_BTN = '.FMPlayer2-RibbonButton[data-fmp-tooltip^="Transcripts"]';
+  var TS_BTN = '.FMPlayer2-RibbonButton[data-fm-tooltip^="Transcripts"]';
+
+  /** 以網站快捷鍵 R 觸發 Transcripts 面板（第一優先）。 */
+  function pressTranscriptKey() {
+    try {
+      var KE = (d.defaultView && d.defaultView.KeyboardEvent) || (typeof KeyboardEvent !== 'undefined' ? KeyboardEvent : null);
+      if (!KE) return;
+      var ev = new KE('keydown', { key: 'r', code: 'KeyR', bubbles: true, cancelable: true });
+      d.dispatchEvent(ev);
+    } catch (e) {}
+  }
   var TS_ACTIVE = '.FMPlayer2-Transcripts.active';
 
   /** 抓取並整理逐字稿；找不到回傳空字串。 */
@@ -301,6 +311,7 @@
 
   function copyTranscript(ctx) {
     var opened = false; // 面板是否由這次執行打開
+    var openedByR = false; // 是否以 R 快捷鍵打開
 
     /** partial：逾時時內容可能還沒載完，保留面板讓使用者可以再複製一次。 */
     function copy(text, partial) {
@@ -309,8 +320,11 @@
         // 只在複製成功、且面板是自己打開的時候關閉；失敗或逾時時保留，重試可直接複製。
         // 按鈕是開關式：確認面板仍是開啟狀態（.active）才點，避免反過來把它打開
         if (ok && opened && !partial && q(TS_ACTIVE)) {
-          var b = q(TS_BTN);
-          if (b) b.click();
+          if (openedByR) pressTranscriptKey();
+          else {
+            var b = q(TS_BTN);
+            if (b) b.click();
+          }
         }
         ctx.done();
       });
@@ -322,13 +336,21 @@
     // 面板已開啟（只是還沒載入）或上一次執行仍在等待中時不點按鈕：按鈕是開關式，再點會關掉面板
     var busy = Date.now() - (+root.getAttribute(OPEN_FLAG) || 0) < WAIT_MS;
     if (!busy && !q(TS_ACTIVE)) {
-      var btn = q(TS_BTN);
-      if (!btn) {
-        toast('找不到逐字稿內容，請先開啟 Transcripts', 'error');
-        return ctx.done();
+      // 第一優先：以 R 快捷鍵觸發；若網站沒有回應，再退回點按鈕
+      pressTranscriptKey();
+      if (q(TS_ACTIVE)) {
+        opened = true;
+        openedByR = true;
+      } else {
+        var btn = q(TS_BTN);
+        if (!btn) {
+          toast('找不到逐字稿內容，請先開啟 Transcripts', 'error');
+          return ctx.done();
+        }
+        btn.click();
+        opened = true;
+        openedByR = false;
       }
-      btn.click();
-      opened = true;
     }
     root.setAttribute(OPEN_FLAG, Date.now());
     toast('正在開啟 Transcripts…', 'info', 0);

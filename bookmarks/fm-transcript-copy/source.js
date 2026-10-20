@@ -40,12 +40,22 @@
   var FLAG = 'data-__bmt_fm_opening';
   var busy = Date.now() - (+root.getAttribute(FLAG) || 0) < WAIT_MS;
   if (!busy && !d.querySelector('.FMPlayer2-Transcripts.active')) {
-    var btn = d.querySelector('.FMPlayer2-RibbonButton[data-fmp-tooltip^="Transcripts"]');
-    if (!btn) {
-      toast('找不到逐字稿內容，請先開啟 Transcripts', 'error');
-      return;
+    var btn = d.querySelector('.FMPlayer2-RibbonButton[data-fm-tooltip^="Transcripts"]');
+    // 第一優先：以 R 快捷鍵觸發
+    try {
+      var KE = (d.defaultView && d.defaultView.KeyboardEvent) || (typeof KeyboardEvent !== 'undefined' ? KeyboardEvent : null);
+      if (KE) {
+        var ev = new KE('keydown', { key: 'r', code: 'KeyR', bubbles: true, cancelable: true });
+        d.dispatchEvent(ev);
+      }
+    } catch (e) {}
+    if (!d.querySelector('.FMPlayer2-Transcripts.active')) {
+      if (!btn) {
+        toast('找不到逐字稿內容，請先開啟 Transcripts', 'error');
+        return;
+      }
+      btn.click();
     }
-    btn.click();
   }
   root.setAttribute(FLAG, Date.now());
   toast('正在開啟 Transcripts…', 'info', 0);

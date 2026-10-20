@@ -276,7 +276,7 @@ test('舊版批次書籤執行中（共用標記）→ 提示批次複製執行�
 });
 
 test('舊版逐字稿書籤等待中（共用標記）→ 不點按鈕，複製成功後也不關閉', async function () {
-  var r = await setup('<button class="FMPlayer2-RibbonButton" data-fmp-tooltip="Transcripts (R)"></button>');
+  var r = await setup('<button class="FMPlayer2-RibbonButton" data-fm-tooltip="Transcripts (R)"></button>');
   var clicks = 0;
   r.d.querySelector('button.FMPlayer2-RibbonButton').addEventListener('click', function () { clicks++; });
   r.d.documentElement.setAttribute('data-__bmt_fm_opening', r.win.Date.now());
@@ -306,7 +306,7 @@ function toggleButton(r, onOpen) {
   return clicks;
 }
 
-var TS_BTN = '<button class="FMPlayer2-RibbonButton" data-fmp-tooltip="Transcripts (R)"></button>';
+var TS_BTN = '<button class="FMPlayer2-RibbonButton" data-fm-tooltip="Transcripts (R)"></button>';
 
 test('逐字稿：使用者在複製前自己關掉面板 → 不再點按鈕', async function () {
   var r = await setup(TS_BTN);

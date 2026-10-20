@@ -31,7 +31,7 @@
 | 用途 | Selector | 說明 |
 |---|---|---|
 | 逐字稿行 | `.transcripts a.line, [data-transcript-content] a.line` | 以 class 為主，data 屬性為備援。網站只改掉其中一個名稱時仍抓得到；兩者同時存在時不會重複，並維持頁面上的順序。 |
-| Transcripts 按鈕 | `.FMPlayer2-RibbonButton[data-fmp-tooltip^="Transcripts"]` | 用開頭比對，改了快捷鍵標示（`(R)`）也能找到；限定 tooltip，避免點到同一排的其他按鈕 |
+| Transcripts 按鈕 | `.FMPlayer2-RibbonButton[data-fm-tooltip^="Transcripts"]` | 用開頭比對，改了快捷鍵標示（`(R)`）也能找到；限定 tooltip，避免點到同一排的其他按鈕 |
 | 面板已開啟 | `.FMPlayer2-Transcripts.active` | 存在時不點按鈕 |
 | 等待中的標記 | `<html data-__bmt_fm_opening="時間戳">` | 等待期間設定，結束時（成功或逾時）移除；3 秒後自動視為過期 |
 

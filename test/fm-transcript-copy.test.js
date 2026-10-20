@@ -133,8 +133,8 @@ test(T.label + 'clipboard 與 fallback 都失敗 → 複製失敗', async functi
 // ---- v1.1.0：找不到逐字稿時自動點擊 Transcripts 按鈕 ----
 
 var BTN =
-  '<button class="FMPlayer2-RibbonButton" data-fmp-tooltip="Transcripts (R)" data-fmp-tooltip-desktop-pos="right"></button>';
-var OTHER_BTN = '<button class="FMPlayer2-RibbonButton" data-fmp-tooltip="Notes (N)"></button>';
+  '<button class="FMPlayer2-RibbonButton" data-fm-tooltip="Transcripts (R)" data-fm-tooltip-desktop-pos="right"></button>';
+var OTHER_BTN = '<button class="FMPlayer2-RibbonButton" data-fm-tooltip="Notes (N)"></button>';
 
 /**
  * 讓 Transcripts 按鈕成為開關：開啟時加上 .FMPlayer2-Transcripts.active，delay 毫秒後插入逐字稿；
@@ -146,10 +146,10 @@ function mountOnClick(delay) {
     clicks: clicks,
     setup: function (win) {
       var d = win.document;
-      d.querySelector('[data-fmp-tooltip^="Notes"]').addEventListener('click', function () {
+      d.querySelector('[data-fm-tooltip^="Notes"]').addEventListener('click', function () {
         clicks.other++;
       });
-      d.querySelector('[data-fmp-tooltip^="Transcripts"]').addEventListener('click', function () {
+      d.querySelector('[data-fm-tooltip^="Transcripts"]').addEventListener('click', function () {
         clicks.n++;
         var panel = d.querySelector('.FMPlayer2-Transcripts');
         if (panel && panel.classList.contains('active')) return panel.classList.remove('active');
@@ -286,7 +286,7 @@ test(T.label + '面板已開啟（.active）但尚未載入：不點按鈕，直
 test(T.label + '分批渲染：等內容穩定後才複製完整內容', async function () {
   var r = await run(OTHER_BTN + BTN, true, function (win) {
     var d = win.document;
-    d.querySelector('[data-fmp-tooltip^="Transcripts"]').addEventListener('click', function () {
+    d.querySelector('[data-fm-tooltip^="Transcripts"]').addEventListener('click', function () {
       var box = d.createElement('div');
       box.className = 'transcripts';
       d.body.appendChild(box);
